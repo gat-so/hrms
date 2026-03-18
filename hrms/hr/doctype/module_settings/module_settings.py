@@ -82,12 +82,19 @@ class ModuleSettings(Document):
 	def toggle_workspace(self, workspace_name, enabled):
 		try:
 			workspace_doc = frappe.get_doc("Workspace", workspace_name)
+			new_public = 1 if enabled else 0
+			if workspace_doc.public == new_public:
+				return
 			workspace_doc.flags.ignore_links = True
 			workspace_doc.flags.ignore_validate = True
-			workspace_doc.public = 1 if enabled else 0
+			workspace_doc.public = new_public
 			workspace_doc.save()
 		except frappe.DoesNotExistError:
 			pass
-		except Exception:
-			frappe.log_error(f"Failed to toggle workspace {workspace_name}")
+		except Exception as e:
+			frappe.log_error(
+				title=f"Failed to toggle workspace {workspace_name}",
+				message=str(e),
+			)
 			frappe.clear_messages()
+			raise

@@ -45,21 +45,23 @@ jobs:
       - run:
           name: Build Docker image
           command: |
+            IMAGE_REPO=$(echo "ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]' | tr '.' '-')
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
             APPS_JSON_BASE64=$(cat .github/helper/apps.json | base64 -w 0)
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \
-              -t ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_SHA1:0:7} \
-              -t ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_BRANCH} \
+              -t ${IMAGE_REPO}:${CIRCLE_SHA1:0:7} \
+              -t ${IMAGE_REPO}:${CIRCLE_BRANCH} \
               -f /tmp/frappe_docker/images/layered/Containerfile \
               /tmp/frappe_docker
       - run:
           name: Push Docker image
           command: |
+            IMAGE_REPO=$(echo "ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]' | tr '.' '-')
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
-            docker push ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_SHA1:0:7}
-            docker push ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_BRANCH}
+            docker push ${IMAGE_REPO}:${CIRCLE_SHA1:0:7}
+            docker push ${IMAGE_REPO}:${CIRCLE_BRANCH}
 
   deploy-dev:
     executor: deployer

@@ -52,7 +52,8 @@ services:
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         echo "Copying assets to shared volume...";
-        rsync -a --delete /home/frappe/frappe-bench/sites/assets/ /shared-assets/;
+        rm -rf /shared-assets/*;
+        cp -r /home/frappe/frappe-bench/sites/assets/* /shared-assets/;
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"

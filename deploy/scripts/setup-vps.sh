@@ -13,7 +13,13 @@ if ! command -v docker &> /dev/null; then
     echo "Installing Docker..."
     curl -fsSL https://get.docker.com | bash
     sudo usermod -aG docker $USER
-    echo "Docker installed. You may need to log out and back in for group changes."
+    echo "Docker installed."
+fi
+
+# Ensure docker commands work in this session
+if ! docker info &> /dev/null; then
+    echo "Applying docker group for current session..."
+    exec sg docker "$0 $*"
 fi
 
 # Install Docker Compose plugin if not present

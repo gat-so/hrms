@@ -26,8 +26,14 @@ for pr_dir in ${PREVIEW_DIR}/pr-*; do
         PR_STATE="UNKNOWN"
     fi
 
-    # Check age of deployment
-    DIR_AGE_HOURS=$(( ($(date +%s) - $(stat -c %Y "$pr_dir" 2>/dev/null || stat -f %m "$pr_dir")) / 3600 ))
+    # Check age based on last deployment marker, falling back to directory mtime
+    MARKER_FILE="$pr_dir/.last_deployed"
+    if [ -f "$MARKER_FILE" ]; then
+        LAST_DEPLOY_TIME=$(stat -c %Y "$MARKER_FILE" 2>/dev/null || stat -f %m "$MARKER_FILE")
+    else
+        LAST_DEPLOY_TIME=$(stat -c %Y "$pr_dir" 2>/dev/null || stat -f %m "$pr_dir")
+    fi
+    DIR_AGE_HOURS=$(( ($(date +%s) - ${LAST_DEPLOY_TIME}) / 3600 ))
 
     if [ "$PR_STATE" = "CLOSED" ] || [ "$PR_STATE" = "MERGED" ] || [ "$DIR_AGE_HOURS" -gt "$STALE_HOURS" ]; then
         echo "Cleaning up PR #${PR_NUM} (state: ${PR_STATE}, age: ${DIR_AGE_HOURS}h)..."

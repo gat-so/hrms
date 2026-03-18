@@ -120,6 +120,8 @@ services:
     depends_on:
       configurator:
         condition: service_completed_successfully
+      create-site:
+        condition: service_completed_successfully
 
   websocket:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -133,6 +135,8 @@ services:
     restart: unless-stopped
     depends_on:
       configurator:
+        condition: service_completed_successfully
+      create-site:
         condition: service_completed_successfully
 
   worker-short:
@@ -148,6 +152,8 @@ services:
     depends_on:
       configurator:
         condition: service_completed_successfully
+      create-site:
+        condition: service_completed_successfully
 
   worker-long:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -162,6 +168,8 @@ services:
     depends_on:
       configurator:
         condition: service_completed_successfully
+      create-site:
+        condition: service_completed_successfully
 
   scheduler:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -175,6 +183,8 @@ services:
     restart: unless-stopped
     depends_on:
       configurator:
+        condition: service_completed_successfully
+      create-site:
         condition: service_completed_successfully
 
   # --- Reverse Proxy ---
@@ -193,6 +203,9 @@ services:
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver=letsencrypt"
       - "traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port=8080"
     restart: unless-stopped
+    networks:
+      - default
+      - traefik
     depends_on:
       - backend
       - websocket

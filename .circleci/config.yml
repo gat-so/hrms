@@ -45,23 +45,25 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            IMAGE_REPO=$(echo "ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]' | tr '.' '-')
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
+            SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
             APPS_JSON_BASE64=$(cat .github/helper/apps.json | base64 -w 0)
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \
               -t ${IMAGE_REPO}:${CIRCLE_SHA1:0:7} \
-              -t ${IMAGE_REPO}:${CIRCLE_BRANCH} \
+              -t ${IMAGE_REPO}:${SANITIZED_BRANCH} \
               -f /tmp/frappe_docker/images/layered/Containerfile \
               /tmp/frappe_docker
       - run:
           name: Push Docker image
           command: |
-            IMAGE_REPO=$(echo "ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}" | tr '[:upper:]' '[:lower:]' | tr '.' '-')
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
+            SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
             docker push ${IMAGE_REPO}:${CIRCLE_SHA1:0:7}
-            docker push ${IMAGE_REPO}:${CIRCLE_BRANCH}
+            docker push ${IMAGE_REPO}:${SANITIZED_BRANCH}
 
   deploy-dev:
     executor: deployer
@@ -93,19 +95,18 @@ jobs:
       - checkout
       - setup-ssh
       - run:
-          name: Extract PR number
-          command: |
-            PR_NUM=$(echo ${CIRCLE_PULL_REQUEST} | grep -oP '\d+$' || echo "0")
-            echo "export PR_NUM=${PR_NUM}" >> $BASH_ENV
-      - run:
           name: Deploy PR preview
           command: |
+            PR_NUM=$(echo ${CIRCLE_PULL_REQUEST} | grep -oP '\d+$' || echo "0")
+            if [ "${PR_NUM}" = "0" ]; then
+              echo "No PR number found, skipping preview deployment."
+              exit 0
+            fi
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
-            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' && rm /tmp/deploy-preview.sh"
-      - run:
-          name: Post preview URL to PR
-          command: |
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh"
+
             PREVIEW_URL="https://hrms-${PR_NUM}.${PREVIEW_DOMAIN:-preview.example.com}"
             curl -s -X POST \
               -H "Authorization: token ${GITHUB_TOKEN}" \

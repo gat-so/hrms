@@ -52,6 +52,6 @@ docker compose -p hrms-${ENV} \
 
 # Run migrations
 docker compose -p hrms-${ENV} exec -T backend \
-    bench --site ${SITE_NAME:-hrms.localhost} migrate --skip-failing || true
+    bench --site ${SITE_NAME:-hrms.localhost} migrate --skip-failing
 
 echo "Deployment of ${ENV} complete!"

@@ -77,7 +77,10 @@ for tracker_file in ${PREVIEW_DIR}/.pr-*; do
             fi
         fi
 
-        cd "${DEPLOY_DIR}"
+        cd "${DEPLOY_DIR}" || {
+            echo "ERROR: Cannot cd to ${DEPLOY_DIR}, skipping"
+            continue
+        }
         docker compose -p "${PROJECT_NAME}" down -v --remove-orphans 2>/dev/null || true
 
         # Verify DEPLOY_DIR is inside PREVIEW_DIR before removal

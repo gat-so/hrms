@@ -170,30 +170,30 @@ jobs:
             DEPLOY_OUTPUT=$(cat /tmp/deploy-output.txt)
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
-            # Escape special characters for safe JSON embedding
-            PREVIEW_URL_ESCAPED=$(echo "${PREVIEW_URL}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
             COMMENT_MARKER="<!-- preview-comment:preview-deployment -->"
-            COMMENT_BODY="${COMMENT_MARKER}\n**Preview deployment ready!**\n\n${PREVIEW_URL_ESCAPED}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._"
+            # Build JSON payload safely using jq to escape all special characters
+            COMMENT_BODY=$(printf '%s\n**Preview deployment ready!**\n\n%s\n\n_This preview will be automatically cleaned up when the PR is closed or merged._' "${COMMENT_MARKER}" "${PREVIEW_URL}")
+            JSON_PAYLOAD=$(jq -n --arg body "${COMMENT_BODY}" '{body: $body}')
 
             # Search for an existing preview comment to update
             EXISTING_COMMENT_ID=$(curl -s \
               -H "Authorization: token ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github.v3+json" \
               "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
-              | grep -B5 "preview-comment:preview-deployment" | grep '"id"' | head -1 | grep -oE '[0-9]+' || echo "")
+              | jq -r '.[] | select(.body | contains("preview-comment:preview-deployment")) | .id' | head -1)
 
-            if [ -n "${EXISTING_COMMENT_ID}" ]; then
+            if [ -n "${EXISTING_COMMENT_ID}" ] && [ "${EXISTING_COMMENT_ID}" != "null" ]; then
               curl -s -X PATCH \
                 -H "Authorization: token ${GITHUB_TOKEN}" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/comments/${EXISTING_COMMENT_ID}" \
-                -d "{\"body\":\"${COMMENT_BODY}\"}"
+                -d "${JSON_PAYLOAD}"
             else
               curl -s -X POST \
                 -H "Authorization: token ${GITHUB_TOKEN}" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
-                -d "{\"body\":\"${COMMENT_BODY}\"}"
+                -d "${JSON_PAYLOAD}"
             fi
 
   cleanup-pr-preview:

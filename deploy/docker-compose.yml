@@ -51,16 +51,21 @@ services:
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
-        echo "Copying assets to shared volume...";
-        rm -rf /shared-assets/*;
-        cp -rL /home/frappe/frappe-bench/sites/assets/. /shared-assets/ || true;
+        echo "Copying assets into sites volume...";
+        rm -rf sites/assets;
+        mkdir -p sites/assets;
+        for app in $$(ls apps/); do
+          if [ -d "apps/$$app/$$app/public" ]; then
+            cp -r "apps/$$app/$$app/public" "sites/assets/$$app";
+          fi;
+        done;
+        echo "Assets copied.";
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-      - assets:/shared-assets
 
   create-site:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -203,7 +208,6 @@ services:
       UPSTREAM_REAL_IP_RECURSIVE: "off"
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
-      - assets:/home/frappe/frappe-bench/sites/assets:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule=Host(`${TRAEFIK_DOMAIN}`)"
@@ -221,7 +225,6 @@ services:
 volumes:
   mariadb-data:
   sites-data:
-  assets:
   logs:
 
 networks:

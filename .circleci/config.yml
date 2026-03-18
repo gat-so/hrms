@@ -113,9 +113,10 @@ jobs:
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
-            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh"
+            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh")
+            echo "${DEPLOY_OUTPUT}"
 
-            PREVIEW_URL="https://hrms-${PR_NUM}.${PREVIEW_DOMAIN:-preview.example.com}"
+            PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
             curl -s -X POST \
               -H "Authorization: token ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github.v3+json" \

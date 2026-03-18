@@ -1,5 +1,6 @@
 #!/bin/bash
 # Deploy a PR preview environment on the VPS
+# Each push creates a fresh deployment with a unique ID, tearing down the previous one.
 # Usage: deploy-preview.sh <pr_number> <repo_url> <branch> <preview_domain> <image_repo> <image_tag>
 set -e
 
@@ -15,30 +16,44 @@ if [ -z "$PR_NUM" ] || [ -z "$REPO_URL" ] || [ -z "$BRANCH" ]; then
     exit 1
 fi
 
-DEPLOY_DIR="/opt/hrms/preview/pr-${PR_NUM}"
-SITE_NAME="hrms-${PR_NUM}.${DOMAIN}"
-DB_PASSWORD=$(openssl rand -hex 16)
-ADMIN_PASSWORD=$(openssl rand -hex 16)
+PREVIEW_BASE="/opt/hrms/preview"
+UUID=$(head -c 4 /dev/urandom | xxd -p)
+SITE_NAME="hrms-${UUID}.${DOMAIN}"
+DEPLOY_DIR="${PREVIEW_BASE}/${UUID}"
+PROJECT_NAME="hrms-preview-${UUID}"
 
-# Create preview directory
+# --- Tear down any previous preview for this PR ---
+TRACKER_FILE="${PREVIEW_BASE}/.pr-${PR_NUM}"
+if [ -f "${TRACKER_FILE}" ]; then
+    OLD_UUID=$(cat "${TRACKER_FILE}")
+    OLD_DIR="${PREVIEW_BASE}/${OLD_UUID}"
+    OLD_PROJECT="hrms-preview-${OLD_UUID}"
+    if [ -d "${OLD_DIR}" ]; then
+        echo "Tearing down previous preview ${OLD_UUID} for PR #${PR_NUM}..."
+        cd "${OLD_DIR}"
+        docker compose -p "${OLD_PROJECT}" down -v --remove-orphans 2>/dev/null || true
+        sudo rm -rf "${OLD_DIR}"
+    fi
+fi
+
+# Track this deployment for the PR
+echo "${UUID}" > "${TRACKER_FILE}"
+
+# Create deploy directory
 sudo mkdir -p ${DEPLOY_DIR}
 sudo chown ${USER}:${USER} ${DEPLOY_DIR}
 
 # Clone the PR branch
-if [ -d "${DEPLOY_DIR}/repo" ]; then
-    cd ${DEPLOY_DIR}/repo
-    git fetch origin
-    git checkout ${BRANCH}
-    git reset --hard origin/${BRANCH}
-else
-    git clone -b ${BRANCH} ${REPO_URL} ${DEPLOY_DIR}/repo
-    cd ${DEPLOY_DIR}/repo
-fi
+git clone -b ${BRANCH} --depth 1 ${REPO_URL} ${DEPLOY_DIR}/repo
+cd ${DEPLOY_DIR}/repo
 
 # Create preview .env
+DB_PASSWORD=$(openssl rand -hex 16)
+ADMIN_PASSWORD=$(openssl rand -hex 16)
+
 cat > ${DEPLOY_DIR}/.env << EOF
 ENVIRONMENT=preview
-COMPOSE_PROJECT_NAME=hrms-pr-${PR_NUM}
+COMPOSE_PROJECT_NAME=${PROJECT_NAME}
 SITE_NAME=${SITE_NAME}
 DB_ROOT_PASSWORD=${DB_PASSWORD}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -57,11 +72,11 @@ EOF
 cp ${DEPLOY_DIR}/repo/deploy/docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml
 
 cd ${DEPLOY_DIR}
-docker compose -p hrms-pr-${PR_NUM} \
+docker compose -p ${PROJECT_NAME} \
     --env-file .env \
     up -d --remove-orphans
 
-# Touch marker file for stale cleanup tracking
-touch ${DEPLOY_DIR}/.last_deployed
-
+# Output the preview URL (used by CI to post comment)
+echo "PREVIEW_UUID=${UUID}"
+echo "PREVIEW_URL=https://${SITE_NAME}"
 echo "Preview deployed at: https://${SITE_NAME}"

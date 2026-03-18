@@ -1,5 +1,5 @@
 #!/bin/bash
-# Clean up a single PR preview environment
+# Clean up a PR preview environment by PR number
 # Usage: cleanup-preview.sh <pr_number>
 set -e
 
@@ -10,18 +10,22 @@ if [ -z "$PR_NUM" ]; then
     exit 1
 fi
 
-DEPLOY_DIR="/opt/hrms/preview/pr-${PR_NUM}"
+PREVIEW_BASE="/opt/hrms/preview"
+TRACKER_FILE="${PREVIEW_BASE}/.pr-${PR_NUM}"
 
-if [ -d "${DEPLOY_DIR}" ]; then
-    cd ${DEPLOY_DIR}
+if [ -f "${TRACKER_FILE}" ]; then
+    UUID=$(cat "${TRACKER_FILE}")
+    DEPLOY_DIR="${PREVIEW_BASE}/${UUID}"
+    PROJECT_NAME="hrms-preview-${UUID}"
 
-    # Stop and remove containers, volumes
-    docker compose -p hrms-pr-${PR_NUM} down -v --remove-orphans 2>/dev/null || true
+    if [ -d "${DEPLOY_DIR}" ]; then
+        cd "${DEPLOY_DIR}"
+        docker compose -p "${PROJECT_NAME}" down -v --remove-orphans 2>/dev/null || true
+        sudo rm -rf "${DEPLOY_DIR}"
+    fi
 
-    # Remove deploy directory
-    sudo rm -rf ${DEPLOY_DIR}
-
-    echo "Preview PR #${PR_NUM} cleaned up."
+    rm -f "${TRACKER_FILE}"
+    echo "Preview for PR #${PR_NUM} (${UUID}) cleaned up."
 else
     echo "No preview found for PR #${PR_NUM}."
 fi

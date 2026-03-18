@@ -1020,7 +1020,7 @@ class TestSalarySlip(IntegrationTestCase):
 		)
 
 		# clear salary slip for this employee
-		frappe.db.sql(f"DELETE FROM `tabSalary Slip` where employee_name = '{employee_name}'")
+		frappe.db.sql("DELETE FROM `tabSalary Slip` where employee_name = %s", (employee_name,))
 
 		create_salary_slips_for_payroll_period(
 			applicant, salary_structure.name, payroll_period, deduct_random=False, num=3
@@ -1065,7 +1065,7 @@ class TestSalarySlip(IntegrationTestCase):
 			"Salary Structure Assignment",
 		]
 		for doc in delete_docs:
-			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee='{employee}'")
+			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee=%s", (employee,))
 
 		from hrms.payroll.doctype.salary_structure.test_salary_structure import make_salary_structure
 
@@ -1198,7 +1198,7 @@ class TestSalarySlip(IntegrationTestCase):
 			"Salary Structure Assignment",
 		]
 		for doc in delete_docs:
-			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee='{employee}'")
+			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee=%s", (employee,))
 
 		from hrms.payroll.doctype.salary_structure.test_salary_structure import make_salary_structure
 

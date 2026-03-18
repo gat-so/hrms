@@ -83,7 +83,7 @@ services:
           echo "Creating site ${SITE_NAME}...";
           bench new-site ${SITE_NAME} \
             --mariadb-root-password ${DB_ROOT_PASSWORD} \
-            --admin-password ${ADMIN_PASSWORD:-admin} \
+            --admin-password ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required} \
             --no-mariadb-socket \
             --install-app erpnext \
             --install-app hrms;
@@ -99,7 +99,7 @@ services:
       <<: *common-env
       SITE_NAME: ${SITE_NAME:-hrms.localhost}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-hrms.localhost}
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
@@ -204,11 +204,11 @@ services:
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
     labels:
-      traefik.enable: "true"
-      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule: "Host(`${TRAEFIK_DOMAIN}`)"
-      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.entrypoints: "websecure"
-      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver: "letsencrypt"
-      traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port: "8080"
+      - "traefik.enable=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule=Host(`${TRAEFIK_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port=8080"
     restart: unless-stopped
     networks:
       - default

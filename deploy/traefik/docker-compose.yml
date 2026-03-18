@@ -5,7 +5,6 @@ services:
       DOCKER_API_VERSION: "1.45"
     command:
       - "--api.dashboard=true"
-      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=traefik_network"
@@ -20,7 +19,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "127.0.0.1:8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt-data:/letsencrypt

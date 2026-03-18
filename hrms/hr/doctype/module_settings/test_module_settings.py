@@ -22,3 +22,6 @@ class TestModuleSettings(IntegrationTestCase):
 		# re-enable
 		settings.enable_buying = 1
 		settings.save()
+
+		settings.reload()
+		self.assertEqual(settings.enable_buying, 1)

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Initial VPS setup script for HRMS deployment
 # Run this once on a fresh Ubuntu 24.04 VPS
-set -e
+set -eo pipefail
 
 echo "=== HRMS VPS Setup ==="
 
@@ -11,14 +11,21 @@ sudo apt update && sudo apt upgrade -y
 # Install Docker if not already installed
 if ! command -v docker &> /dev/null; then
     echo "Installing Docker..."
-    curl -fsSL https://get.docker.com | bash
-    sudo usermod -aG docker $USER
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sudo bash /tmp/get-docker.sh
+    rm -f /tmp/get-docker.sh
+    sudo usermod -aG docker "$USER"
     echo "Docker installed."
 fi
 
-# Ensure docker commands work in this session
+# Ensure docker commands work in this session (single retry to avoid infinite loop)
 if ! docker info &> /dev/null; then
+    if [ "${_HRMS_REEXEC:-}" = "1" ]; then
+        echo "ERROR: Docker group still not effective after re-exec. Please log out and log back in."
+        exit 1
+    fi
     echo "Applying docker group for current session..."
+    export _HRMS_REEXEC=1
     exec sg docker "$0 $*"
 fi
 
@@ -50,6 +57,7 @@ ACME_EMAIL=${ACME_EMAIL}
 TRAEFIK_DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN}
 TRAEFIK_DASHBOARD_AUTH=${DASHBOARD_AUTH}
 EOF
+chmod 600 /opt/hrms/traefik/.env
 
 echo ""
 echo "=== Setup Complete ==="

@@ -92,10 +92,10 @@ class ModuleSettings(Document):
 			workspace_doc.save()
 		except frappe.DoesNotExistError:
 			pass
-		except Exception as e:
+		except Exception:
 			frappe.log_error(
 				title=f"Failed to toggle workspace {workspace_name}",
-				message=str(e),
+				message=frappe.get_traceback(),
 			)
 			frappe.clear_messages()
 			raise

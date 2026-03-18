@@ -1,5 +1,13 @@
 version: 2.1
 
+parameters:
+  run-cleanup:
+    type: boolean
+    default: false
+  pr-number:
+    type: string
+    default: ""
+
 executors:
   deployer:
     docker:
@@ -10,14 +18,26 @@ commands:
   setup-ssh:
     description: Configure SSH access to VPS
     steps:
-      - add_ssh_keys:
-          fingerprints:
-            - "${SSH_KEY_FINGERPRINT}"
+      - add_ssh_keys
       - run:
           name: Add VPS to known hosts
           command: |
             mkdir -p ~/.ssh
-            ssh-keyscan -H ${VPS_HOST} >> ~/.ssh/known_hosts
+            SCANNED_KEY=$(ssh-keyscan -H ${VPS_HOST} 2>/dev/null)
+            if [ -z "${SCANNED_KEY}" ]; then
+              echo "ERROR: Could not retrieve host key for ${VPS_HOST}"
+              exit 1
+            fi
+            if [ -n "${EXPECTED_VPS_HOST_FINGERPRINT}" ]; then
+              ACTUAL_FP=$(echo "${SCANNED_KEY}" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' | head -1)
+              if [ "${ACTUAL_FP}" != "${EXPECTED_VPS_HOST_FINGERPRINT}" ]; then
+                echo "ERROR: VPS host key fingerprint mismatch!"
+                echo "Expected: ${EXPECTED_VPS_HOST_FINGERPRINT}"
+                echo "Actual:   ${ACTUAL_FP}"
+                exit 1
+              fi
+            fi
+            echo "${SCANNED_KEY}" >> ~/.ssh/known_hosts
 
 jobs:
   lint-and-test:
@@ -49,8 +69,14 @@ jobs:
             SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
 
-            # Inject GitHub token into private repo URLs in apps.json
-            sed "s|https://github.com/gat-so/|https://${GITHUB_TOKEN}@github.com/gat-so/|g" \
+            # Inject GitHub token and resolve branch placeholder in apps.json
+            if [ ! -f ".github/helper/apps.json" ]; then
+              echo "ERROR: .github/helper/apps.json not found"
+              exit 1
+            fi
+            HRMS_BRANCH="${CIRCLE_BRANCH}"
+            sed -e "s|https://github.com/gat-so/|https://${GITHUB_TOKEN}@github.com/gat-so/|g" \
+                -e "s|{{HRMS_BRANCH}}|${HRMS_BRANCH}|g" \
               .github/helper/apps.json > /tmp/apps.json
             APPS_JSON_BASE64=$(cat /tmp/apps.json | base64 -w 0)
 
@@ -79,9 +105,8 @@ jobs:
           name: Deploy to dev environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
 
   deploy-prod:
     executor: deployer
@@ -92,9 +117,8 @@ jobs:
           name: Deploy to prod environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
 
   deploy-pr-preview:
     executor: deployer
@@ -104,16 +128,15 @@ jobs:
       - run:
           name: Deploy PR preview
           command: |
-            PR_NUM=$(echo ${CIRCLE_PULL_REQUEST} | grep -oP '\d+$' || echo "0")
-            if [ "${PR_NUM}" = "0" ]; then
+            PR_NUM=$(echo "${CIRCLE_PULL_REQUEST}" | grep -oP '\d+$' || echo "")
+            if [ -z "${PR_NUM}" ]; then
               echo "No PR number found, skipping preview deployment."
               exit 0
             fi
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
-            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh")
+            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh")
             echo "${DEPLOY_OUTPUT}"
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
@@ -125,17 +148,19 @@ jobs:
 
   cleanup-pr-preview:
     executor: deployer
-    parameters:
-      pr-number:
-        type: string
     steps:
       - checkout
       - setup-ssh
       - run:
           name: Cleanup PR preview
           command: |
+            PR_NUM="<< pipeline.parameters.pr-number >>"
+            if [ -z "${PR_NUM}" ]; then
+              echo "No PR number provided, skipping cleanup."
+              exit 0
+            fi
             scp deploy/scripts/cleanup-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/cleanup-preview.sh
-            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/cleanup-preview.sh && /tmp/cleanup-preview.sh '<< parameters.pr-number >>' && rm /tmp/cleanup-preview.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/cleanup-preview.sh && /tmp/cleanup-preview.sh '${PR_NUM}' && rm /tmp/cleanup-preview.sh"
 
 workflows:
   # Run on every PR branch
@@ -149,6 +174,7 @@ workflows:
                 - dev
 
       - build-image:
+          context: hrms-deploy
           requires:
             - lint-and-test
           filters:
@@ -158,6 +184,7 @@ workflows:
                 - dev
 
       - deploy-pr-preview:
+          context: hrms-deploy
           requires:
             - build-image
           filters:
@@ -170,11 +197,13 @@ workflows:
   deploy-dev-workflow:
     jobs:
       - build-image:
+          context: hrms-deploy
           filters:
             branches:
               only: dev
 
       - deploy-dev:
+          context: hrms-deploy
           requires:
             - build-image
           filters:
@@ -185,13 +214,22 @@ workflows:
   deploy-prod-workflow:
     jobs:
       - build-image:
+          context: hrms-deploy
           filters:
             branches:
               only: prod
 
       - deploy-prod:
+          context: hrms-deploy
           requires:
             - build-image
           filters:
             branches:
               only: prod
+
+  # Cleanup PR preview (triggered via API with run-cleanup=true and pr-number=<num>)
+  cleanup-preview-workflow:
+    when: << pipeline.parameters.run-cleanup >>
+    jobs:
+      - cleanup-pr-preview:
+          context: hrms-deploy

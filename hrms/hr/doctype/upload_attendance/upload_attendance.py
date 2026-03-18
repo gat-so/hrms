@@ -82,6 +82,7 @@ def get_data(args):
 		[employee.name for employee in employees], args["from_date"], args["to_date"]
 	)
 	existing_attendance_records = get_existing_attendance_records(args)
+	default_naming_series = get_naming_series()
 	data = []
 	for date in dates:
 		for employee in employees:
@@ -109,7 +110,7 @@ def get_data(args):
 				(existing_attendance and existing_attendance.status) or "",
 				(existing_attendance and existing_attendance.leave_type) or "",
 				employee.company,
-				(existing_attendance and existing_attendance.naming_series) or get_naming_series(),
+				(existing_attendance and existing_attendance.naming_series) or default_naming_series,
 			]
 			if date in holidays[employee_holiday_list]:
 				row[4] = "Holiday"

@@ -1,57 +1,69 @@
 #!/bin/bash
 # Deploy a specific environment (prod or dev) on the VPS
-# Usage: deploy-env.sh <environment> <repo_url> <branch>
+# Usage: deploy-env.sh <environment> <github_org> <repo_name> <branch>
+# Requires GITHUB_TOKEN env var for repo access
 set -e
 
 ENV="$1"
-REPO_URL="$2"
-BRANCH="$3"
+GITHUB_ORG="$2"
+REPO_NAME="$3"
+BRANCH="$4"
 
-if [ -z "$ENV" ] || [ -z "$REPO_URL" ] || [ -z "$BRANCH" ]; then
-    echo "Usage: deploy-env.sh <environment> <repo_url> <branch>"
+if [ -z "$ENV" ] || [ -z "$GITHUB_ORG" ] || [ -z "$REPO_NAME" ] || [ -z "$BRANCH" ]; then
+    echo "Usage: deploy-env.sh <environment> <github_org> <repo_name> <branch>"
     exit 1
 fi
+
+if [ -z "${GITHUB_TOKEN}" ]; then
+    echo "ERROR: GITHUB_TOKEN environment variable is required"
+    exit 1
+fi
+
+REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${REPO_NAME}.git"
 
 DEPLOY_DIR="/opt/hrms/${ENV}"
 
 # Ensure deploy directory exists
-sudo mkdir -p ${DEPLOY_DIR}
-sudo chown ${USER}:${USER} ${DEPLOY_DIR}
+sudo mkdir -p "${DEPLOY_DIR}"
+sudo chown "${USER}:${USER}" "${DEPLOY_DIR}"
 
 # Clone or update repo
 if [ -d "${DEPLOY_DIR}/repo" ]; then
-    cd ${DEPLOY_DIR}/repo
+    cd "${DEPLOY_DIR}/repo"
     git fetch origin
-    git checkout ${BRANCH}
-    git reset --hard origin/${BRANCH}
+    git checkout "${BRANCH}"
+    git reset --hard "origin/${BRANCH}"
 else
-    git clone -b ${BRANCH} ${REPO_URL} ${DEPLOY_DIR}/repo
-    cd ${DEPLOY_DIR}/repo
+    git clone -b "${BRANCH}" "${REPO_URL}" "${DEPLOY_DIR}/repo"
+    cd "${DEPLOY_DIR}/repo"
 fi
 
 # Copy deployment files
-cp deploy/docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml
-cp deploy/.env.${ENV}.example ${DEPLOY_DIR}/.env.example
+cp deploy/docker-compose.yml "${DEPLOY_DIR}/docker-compose.yml"
+cp "deploy/.env.${ENV}.example" "${DEPLOY_DIR}/.env.example"
 
-# Create .env if it doesn't exist (first deploy)
+# Require .env to exist (must be configured before first deploy)
 if [ ! -f "${DEPLOY_DIR}/.env" ]; then
-    cp ${DEPLOY_DIR}/.env.example ${DEPLOY_DIR}/.env
-    echo "WARNING: Using example .env — update with real values!"
+    echo "ERROR: ${DEPLOY_DIR}/.env not found."
+    echo "Copy ${DEPLOY_DIR}/.env.example to ${DEPLOY_DIR}/.env and configure it before deploying."
+    exit 1
 fi
 
 # Deploy
-cd ${DEPLOY_DIR}
-export $(grep -v '^#' .env | xargs)
+cd "${DEPLOY_DIR}"
+set -a
+source .env
+set +a
 
-docker compose -p hrms-${ENV} \
+docker compose -p "hrms-${ENV}" \
     --env-file .env \
     pull
-docker compose -p hrms-${ENV} \
+docker compose -p "hrms-${ENV}" \
     --env-file .env \
     up -d --remove-orphans
 
 # Run migrations
-docker compose -p hrms-${ENV} exec -T backend \
-    bench --site ${SITE_NAME:-hrms.localhost} migrate --skip-failing
+docker compose -p "hrms-${ENV}" exec -T backend \
+    bench --site "${SITE_NAME:-hrms.localhost}" migrate --skip-failing
 
 echo "Deployment of ${ENV} complete!"

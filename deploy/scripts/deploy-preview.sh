@@ -1,20 +1,29 @@
 #!/bin/bash
 # Deploy a PR preview environment on the VPS
 # Each push creates a fresh deployment with a unique ID, tearing down the previous one.
-# Usage: deploy-preview.sh <pr_number> <repo_url> <branch> <preview_domain> <image_repo> <image_tag>
+# Usage: deploy-preview.sh <pr_number> <github_org> <repo_name> <branch> <preview_domain> <image_repo> <image_tag>
+# Requires GITHUB_TOKEN env var for repo access
 set -e
 
 PR_NUM="$1"
-REPO_URL="$2"
-BRANCH="$3"
-DOMAIN="${4:-preview.example.com}"
-IMAGE_REPO="${5:-frappe/bench}"
-IMAGE_TAG="${6:-latest}"
+GITHUB_ORG="$2"
+REPO_NAME="$3"
+BRANCH="$4"
+DOMAIN="${5:-preview.example.com}"
+IMAGE_REPO="${6:-frappe/bench}"
+IMAGE_TAG="${7:-latest}"
 
-if [ -z "$PR_NUM" ] || [ -z "$REPO_URL" ] || [ -z "$BRANCH" ]; then
-    echo "Usage: deploy-preview.sh <pr_number> <repo_url> <branch> [preview_domain] [image_repo] [image_tag]"
+if [ -z "$PR_NUM" ] || [ -z "$GITHUB_ORG" ] || [ -z "$REPO_NAME" ] || [ -z "$BRANCH" ]; then
+    echo "Usage: deploy-preview.sh <pr_number> <github_org> <repo_name> <branch> [preview_domain] [image_repo] [image_tag]"
     exit 1
 fi
+
+if [ -z "${GITHUB_TOKEN}" ]; then
+    echo "ERROR: GITHUB_TOKEN environment variable is required"
+    exit 1
+fi
+
+REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${REPO_NAME}.git"
 
 PREVIEW_BASE="/opt/hrms/preview"
 UUID=$(head -c 4 /dev/urandom | xxd -p)
@@ -39,18 +48,18 @@ fi
 echo "${UUID}" > "${TRACKER_FILE}"
 
 # Create deploy directory
-sudo mkdir -p ${DEPLOY_DIR}
-sudo chown ${USER}:${USER} ${DEPLOY_DIR}
+sudo mkdir -p "${DEPLOY_DIR}"
+sudo chown "${USER}:${USER}" "${DEPLOY_DIR}"
 
 # Clone the PR branch
-git clone -b ${BRANCH} --depth 1 ${REPO_URL} ${DEPLOY_DIR}/repo
-cd ${DEPLOY_DIR}/repo
+git clone -b "${BRANCH}" --depth 1 "${REPO_URL}" "${DEPLOY_DIR}/repo"
+cd "${DEPLOY_DIR}/repo"
 
 # Create preview .env
 DB_PASSWORD=$(openssl rand -hex 16)
 ADMIN_PASSWORD=$(openssl rand -hex 16)
 
-cat > ${DEPLOY_DIR}/.env << EOF
+cat > "${DEPLOY_DIR}/.env" << EOF
 ENVIRONMENT=preview
 COMPOSE_PROJECT_NAME=${PROJECT_NAME}
 SITE_NAME=${SITE_NAME}
@@ -68,18 +77,18 @@ HRMS_BRANCH=${BRANCH}
 EOF
 
 # Copy and start deployment
-cp ${DEPLOY_DIR}/repo/deploy/docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml
+cp "${DEPLOY_DIR}/repo/deploy/docker-compose.yml" "${DEPLOY_DIR}/docker-compose.yml"
 
-cd ${DEPLOY_DIR}
-docker compose -p ${PROJECT_NAME} \
+cd "${DEPLOY_DIR}"
+docker compose -p "${PROJECT_NAME}" \
     --env-file .env \
     up -d --remove-orphans
 
 # --- Ensure nginx is on traefik_network (fallback for race conditions) ---
 sleep 3
-NGINX_CONTAINER=$(docker compose -p ${PROJECT_NAME} --env-file .env ps nginx -q 2>/dev/null)
+NGINX_CONTAINER=$(docker compose -p "${PROJECT_NAME}" --env-file .env ps nginx -q 2>/dev/null)
 if [ -n "${NGINX_CONTAINER}" ]; then
-    docker network connect traefik_network ${NGINX_CONTAINER} 2>/dev/null || true
+    docker network connect traefik_network "${NGINX_CONTAINER}" 2>/dev/null || true
 fi
 
 # --- Force Traefik to rediscover containers ---
@@ -99,19 +108,37 @@ echo "TRAEFIK_DOMAIN=${SITE_NAME}"
 if [ -n "${NGINX_CONTAINER}" ]; then
     echo ""
     echo "--- nginx labels ---"
-    docker inspect ${NGINX_CONTAINER} --format '{{range $k,$v := .Config.Labels}}{{$k}}={{$v}}{{"\n"}}{{end}}' 2>/dev/null | grep traefik || true
+    docker inspect "${NGINX_CONTAINER}" --format '{{range $k,$v := .Config.Labels}}{{$k}}={{$v}}{{"\n"}}{{end}}' 2>/dev/null | grep traefik || true
     echo ""
     echo "--- nginx networks ---"
-    docker inspect ${NGINX_CONTAINER} --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true
+    docker inspect "${NGINX_CONTAINER}" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true
 fi
 echo "=== End Diagnostics ==="
 
 # --- Verify site is accessible ---
 echo ""
 echo "Waiting for site to become accessible..."
-sleep 10
-HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${SITE_NAME}/" 2>/dev/null || echo "000")
-echo "Site response: HTTP ${HTTP_CODE}"
+MAX_RETRIES=${PREVIEW_HEALTH_RETRIES:-12}
+RETRY_INTERVAL=10
+HTTP_CODE="000"
+for i in $(seq 1 ${MAX_RETRIES}); do
+    sleep ${RETRY_INTERVAL}
+    HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${SITE_NAME}/" 2>/dev/null || echo "000")
+    echo "Attempt ${i}/${MAX_RETRIES}: HTTP ${HTTP_CODE}"
+    if echo "${HTTP_CODE}" | grep -qE '^2'; then
+        break
+    fi
+done
+
+# Mark deployment time for stale-check
+touch "${DEPLOY_DIR}/.last_deployed"
+
+if ! echo "${HTTP_CODE}" | grep -qE '^2'; then
+    echo "ERROR: Site not accessible after ${MAX_RETRIES} attempts (last HTTP ${HTTP_CODE})"
+    echo "PREVIEW_UUID=${UUID}"
+    echo "PREVIEW_URL=https://${SITE_NAME}"
+    exit 1
+fi
 
 # Output the preview URL (used by CI to post comment)
 echo "PREVIEW_UUID=${UUID}"

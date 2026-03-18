@@ -473,8 +473,6 @@ class LeaveApplication(Document, PWANotificationsMixin):
 					self.show_insufficient_balance_message(leave_balance_for_consumption)
 
 	def show_insufficient_balance_message(self, leave_balance_for_consumption: float) -> None:
-		_alloc_on_from_date, _alloc_on_to_date = self.get_allocation_based_on_application_dates()
-
 		if frappe.db.get_value("Leave Type", self.leave_type, "allow_negative"):
 			if leave_balance_for_consumption != self.leave_balance:
 				msg = _("Warning: Insufficient leave balance for Leave Type {0} in this allocation.").format(

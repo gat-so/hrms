@@ -48,7 +48,12 @@ jobs:
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
             SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
-            APPS_JSON_BASE64=$(cat .github/helper/apps.json | base64 -w 0)
+
+            # Inject GitHub token into private repo URLs in apps.json
+            sed "s|https://github.com/gat-so/|https://${GITHUB_TOKEN}@github.com/gat-so/|g" \
+              .github/helper/apps.json > /tmp/apps.json
+            APPS_JSON_BASE64=$(cat /tmp/apps.json | base64 -w 0)
+
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \

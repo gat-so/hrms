@@ -85,8 +85,9 @@ class ModuleSettings(Document):
 			workspace_doc.flags.ignore_links = True
 			workspace_doc.flags.ignore_validate = True
 			workspace_doc.public = 1 if enabled else 0
-			workspace_doc.save(ignore_permissions=True)
+			workspace_doc.save()
 		except frappe.DoesNotExistError:
 			pass
 		except Exception:
+			frappe.log_error(f"Failed to toggle workspace {workspace_name}")
 			frappe.clear_messages()

@@ -136,8 +136,16 @@ jobs:
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
             scp deploy/scripts/deploy-preview.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
-            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh '${PR_NUM}' 'dev' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml")
-            echo "${DEPLOY_OUTPUT}"
+            set +e
+            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh '${PR_NUM}' 'dev' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}'" 2>&1 | tee /tmp/deploy-output.txt
+            SSH_EXIT=${PIPESTATUS[0]}
+            ssh ${VPS_USER}@${VPS_HOST} "rm -f /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
+            set -e
+            if [ "${SSH_EXIT}" -ne 0 ]; then
+              echo "ERROR: Preview deployment failed with exit code ${SSH_EXIT}"
+              exit ${SSH_EXIT}
+            fi
+            DEPLOY_OUTPUT=$(cat /tmp/deploy-output.txt)
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
             curl -s -X POST \

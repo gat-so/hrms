@@ -1,0 +1,210 @@
+version: "3.8"
+
+x-common-env: &common-env
+  DB_HOST: mariadb
+  DB_PORT: "3306"
+  REDIS_CACHE: redis-cache:6379
+  REDIS_QUEUE: redis-queue:6379
+  REDIS_SOCKETIO: redis-socketio:6379
+
+services:
+  # --- Infrastructure ---
+  mariadb:
+    image: mariadb:10.8
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: mysqladmin ping -h localhost --password=${DB_ROOT_PASSWORD}
+      interval: 10s
+      retries: 5
+
+  redis-cache:
+    image: redis:alpine
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:alpine
+    restart: unless-stopped
+
+  redis-socketio:
+    image: redis:alpine
+    restart: unless-stopped
+
+  # --- Frappe/HRMS Application ---
+  configurator:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command:
+      - >
+        ls -1 apps > sites/apps.txt;
+        bench set-config -g db_host $$DB_HOST;
+        bench set-config -gp db_port $$DB_PORT;
+        bench set-config -g redis_cache "redis://$$REDIS_CACHE";
+        bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
+        bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
+        bench set-config -gp socketio_port $$SOCKETIO_PORT;
+    environment:
+      <<: *common-env
+      SOCKETIO_PORT: "9000"
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+
+  create-site:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command:
+      - >
+        wait-for-it -t 120 mariadb:3306;
+        wait-for-it -t 120 redis-cache:6379;
+        wait-for-it -t 120 redis-queue:6379;
+        wait-for-it -t 120 redis-socketio:6379;
+        export start=`date +%s`;
+        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] && \
+          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] && \
+          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_queue // empty"` ]];
+        do
+          echo "Waiting for configurator...";
+          sleep 5;
+          if (( `date +%s`-start > 120 )); then
+            echo "Timeout waiting for configurator";
+            exit 1;
+          fi;
+        done;
+        echo "Configuration found";
+        if [[ ! -f "sites/${SITE_NAME}/site_config.json" ]]; then
+          echo "Creating site ${SITE_NAME}...";
+          bench new-site ${SITE_NAME} \
+            --mariadb-root-password ${DB_ROOT_PASSWORD} \
+            --admin-password ${ADMIN_PASSWORD:-admin} \
+            --no-mariadb-socket \
+            --install-app erpnext \
+            --install-app hrms;
+        else
+          echo "Site ${SITE_NAME} already exists, running migrate...";
+          bench --site ${SITE_NAME} migrate --skip-failing;
+        fi;
+        bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
+        bench --site ${SITE_NAME} enable-scheduler;
+    environment:
+      <<: *common-env
+      SITE_NAME: ${SITE_NAME:-hrms.localhost}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      TRAEFIK_DOMAIN: ${TRAEFIK_DOMAIN:-hrms.localhost}
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  backend:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command: ["bench serve --port 8000"]
+    environment:
+      <<: *common-env
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  websocket:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command: ["node /home/frappe/frappe-bench/apps/frappe/socketio.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  worker-short:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command: ["bench worker --queue short"]
+    environment:
+      <<: *common-env
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  worker-long:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command: ["bench worker --queue long"]
+    environment:
+      <<: *common-env
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  scheduler:
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    entrypoint: ["bash", "-c"]
+    command: ["bench schedule"]
+    environment:
+      <<: *common-env
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    depends_on:
+      configurator:
+        condition: service_completed_successfully
+
+  # --- Reverse Proxy ---
+  nginx:
+    image: frappe/frappe-nginx:latest
+    environment:
+      BACKEND: backend:8000
+      SOCKETIO: websocket:9000
+      FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:-hrms.localhost}
+    volumes:
+      - sites-data:/home/frappe/frappe-bench/sites
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule=Host(`${TRAEFIK_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port=8080"
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - websocket
+
+volumes:
+  mariadb-data:
+  sites-data:
+  logs:
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME:-hrms}_network
+  traefik:
+    external: true
+    name: traefik_network

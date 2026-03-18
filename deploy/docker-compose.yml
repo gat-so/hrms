@@ -194,6 +194,7 @@ services:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
       FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:-hrms.localhost}
+      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
     labels:

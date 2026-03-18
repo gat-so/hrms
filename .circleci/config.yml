@@ -220,6 +220,7 @@ jobs:
 workflows:
   # Run on every PR branch
   pr-checks:
+    unless: << pipeline.parameters.run-cleanup >>
     jobs:
       - lint-and-test:
           filters:
@@ -250,6 +251,7 @@ workflows:
 
   # Deploy to dev when merged into dev branch
   deploy-dev-workflow:
+    unless: << pipeline.parameters.run-cleanup >>
     jobs:
       - build-image:
           context: hrms-deploy
@@ -267,6 +269,7 @@ workflows:
 
   # Deploy to prod when merged into prod branch
   deploy-prod-workflow:
+    unless: << pipeline.parameters.run-cleanup >>
     jobs:
       - build-image:
           context: hrms-deploy

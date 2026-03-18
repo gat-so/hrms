@@ -78,6 +78,14 @@ if [ -z "${DB_ROOT_PASSWORD}" ]; then
     exit 1
 fi
 
+# --- Acquire deploy lock to serialize concurrent deploys for the same PR ---
+LOCK_FILE="${PREVIEW_BASE}/.pr-${PR_NUM}.lock"
+exec 9>"${LOCK_FILE}"
+flock -w 300 9 || {
+    echo "ERROR: Timed out waiting for preview lock for PR #${PR_NUM}"
+    exit 1
+}
+
 # --- Determine if this is a fresh deploy or update ---
 IS_UPDATE=false
 if [ -d "${DEPLOY_DIR}" ] && [ -f "${DEPLOY_DIR}/.env" ]; then
@@ -109,7 +117,7 @@ else
     ADMIN_PASSWORD=$(openssl rand -hex 16)
 fi
 
-cat > "${DEPLOY_DIR}/.env" << EOF
+( umask 077 && cat > "${DEPLOY_DIR}/.env" << EOF
 ENVIRONMENT=${TARGET_ENV}
 COMPOSE_PROJECT_NAME=${PROJECT_NAME}
 SITE_NAME=${SITE_NAME}
@@ -127,6 +135,7 @@ HRMS_REPO=${REPO_URL}
 HRMS_BRANCH=${BRANCH}
 TARGET_ENV=${TARGET_ENV}
 EOF
+)
 
 # Copy compose file
 cp "${DEPLOY_DIR}/repo/deploy/docker-compose.yml" "${DEPLOY_DIR}/docker-compose.yml"

@@ -45,7 +45,7 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
 
@@ -64,7 +64,7 @@ jobs:
       - run:
           name: Push Docker image
           command: |
-            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
             docker push ${IMAGE_REPO}:${CIRCLE_SHA1:0:7}
@@ -107,7 +107,7 @@ jobs:
               echo "No PR number found, skipping preview deployment."
               exit 0
             fi
-            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]')/${CIRCLE_PROJECT_REPONAME}"
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
             ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh"

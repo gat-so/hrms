@@ -198,6 +198,11 @@ services:
   # --- Reverse Proxy ---
   nginx:
     image: frappe/frappe-nginx:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        cp -rL /home/frappe/frappe-bench/sites/assets/* /var/www/html/assets/ 2>/dev/null || true;
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000

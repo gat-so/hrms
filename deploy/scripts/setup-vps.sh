@@ -37,7 +37,7 @@ fi
 
 # Create directory structure
 echo "Creating directory structure..."
-sudo mkdir -p /opt/hrms/{prod,dev,preview}
+sudo mkdir -p /opt/hrms/{prod,dev,prod-infra,dev-infra,preview}
 sudo mkdir -p /opt/hrms/traefik
 sudo chown -R $USER:$USER /opt/hrms
 
@@ -66,10 +66,13 @@ echo "Next steps:"
 echo "  1. Copy deploy/traefik/docker-compose.yml to /opt/hrms/traefik/"
 echo "  2. Start Traefik:  cd /opt/hrms/traefik && docker compose up -d"
 echo "  3. Configure DNS A records pointing to this VPS IP:"
-echo "     - hrms.yourdomain.com       → VPS IP (production)"
-echo "     - dev.hrms.yourdomain.com   → VPS IP (development)"
-echo "     - *.preview.yourdomain.com  → VPS IP (PR previews)"
-echo "     - traefik.yourdomain.com    → VPS IP (Traefik dashboard)"
+echo "     - hrms.yourdomain.com       -> VPS IP (production)"
+echo "     - dev.hrms.yourdomain.com   -> VPS IP (development)"
+echo "     - *.preview.yourdomain.com  -> VPS IP (PR previews)"
+echo "     - traefik.yourdomain.com    -> VPS IP (Traefik dashboard)"
 echo "  4. Set up environment files in /opt/hrms/prod/.env and /opt/hrms/dev/.env"
-echo "  5. Add SSH keys and environment variables to CircleCI"
+echo "  5. Deploy shared infrastructure:"
+echo "     - bash deploy/scripts/deploy-infra.sh prod"
+echo "     - bash deploy/scripts/deploy-infra.sh dev"
+echo "  6. Add SSH keys and environment variables to CI/CD"
 echo ""

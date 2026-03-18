@@ -1,5 +1,6 @@
 #!/bin/bash
-# Deploy a specific environment (prod or dev) on the VPS
+# Deploy a specific environment (prod or dev) on the VPS.
+# Ensures shared infrastructure is running before deploying app services.
 # Usage: deploy-env.sh <environment> <github_org> <repo_name> <branch>
 # Requires GITHUB_TOKEN env var for repo access
 set -e
@@ -22,6 +23,7 @@ fi
 REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${REPO_NAME}.git"
 
 DEPLOY_DIR="/opt/hrms/${ENV}"
+INFRA_NETWORK="hrms-${ENV}-infra"
 
 # Ensure deploy directory exists
 sudo mkdir -p "${DEPLOY_DIR}"
@@ -49,12 +51,18 @@ if [ ! -f "${DEPLOY_DIR}/.env" ]; then
     exit 1
 fi
 
-# Deploy
-cd "${DEPLOY_DIR}"
+# Source .env to get DB_ROOT_PASSWORD for infra deployment
 set -a
-source .env
+source "${DEPLOY_DIR}/.env"
 set +a
 
+# --- Ensure shared infrastructure is running ---
+echo "Ensuring shared infrastructure for '${ENV}' is running..."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+bash "${SCRIPT_DIR}/deploy-infra.sh" "${ENV}"
+
+# --- Deploy app services ---
+cd "${DEPLOY_DIR}"
 docker compose -p "hrms-${ENV}" \
     --env-file .env \
     pull

@@ -1,3 +1,7 @@
+# Application services for HRMS deployment.
+# Connects to shared infrastructure (MariaDB + Redis) via external network.
+# Infrastructure must be started separately using docker-compose.infra.yml.
+
 x-common-env: &common-env
   DB_HOST: mariadb
   DB_PORT: "3306"
@@ -6,36 +10,6 @@ x-common-env: &common-env
   REDIS_SOCKETIO: redis-socketio:6379
 
 services:
-  # --- Infrastructure ---
-  mariadb:
-    image: mariadb:10.8
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    restart: unless-stopped
-    healthcheck:
-      test: mysqladmin ping -h localhost --password=${DB_ROOT_PASSWORD}
-      interval: 10s
-      retries: 5
-
-  redis-cache:
-    image: redis:alpine
-    restart: unless-stopped
-
-  redis-queue:
-    image: redis:alpine
-    restart: unless-stopped
-
-  redis-socketio:
-    image: redis:alpine
-    restart: unless-stopped
-
   # --- Frappe/HRMS Application ---
   configurator:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -56,6 +30,9 @@ services:
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    networks:
+      - app
+      - infra
 
   create-site:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -105,8 +82,11 @@ services:
       - sites-data:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
     depends_on:
-      mariadb:
-        condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   backend:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -123,6 +103,9 @@ services:
         condition: service_completed_successfully
       create-site:
         condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   websocket:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -139,6 +122,9 @@ services:
         condition: service_completed_successfully
       create-site:
         condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   worker-short:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -155,6 +141,9 @@ services:
         condition: service_completed_successfully
       create-site:
         condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   worker-long:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -171,6 +160,9 @@ services:
         condition: service_completed_successfully
       create-site:
         condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   scheduler:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -187,6 +179,9 @@ services:
         condition: service_completed_successfully
       create-site:
         condition: service_completed_successfully
+    networks:
+      - app
+      - infra
 
   # --- Reverse Proxy (uses same custom image as backend, with nginx-entrypoint) ---
   nginx:
@@ -211,20 +206,22 @@ services:
       - "traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port=8080"
     restart: unless-stopped
     networks:
-      - default
+      - app
       - traefik
     depends_on:
       - backend
       - websocket
 
 volumes:
-  mariadb-data:
   sites-data:
   logs:
 
 networks:
-  default:
+  app:
     name: ${COMPOSE_PROJECT_NAME:-hrms}_network
+  infra:
+    external: true
+    name: ${INFRA_NETWORK:?INFRA_NETWORK is required}
   traefik:
     external: true
     name: traefik_network

@@ -473,8 +473,6 @@ class LeaveApplication(Document, PWANotificationsMixin):
 					self.show_insufficient_balance_message(leave_balance_for_consumption)
 
 	def show_insufficient_balance_message(self, leave_balance_for_consumption: float) -> None:
-		alloc_on_from_date, alloc_on_to_date = self.get_allocation_based_on_application_dates()
-
 		if frappe.db.get_value("Leave Type", self.leave_type, "allow_negative"):
 			if leave_balance_for_consumption != self.leave_balance:
 				msg = _("Warning: Insufficient leave balance for Leave Type {0} in this allocation.").format(
@@ -1322,7 +1320,7 @@ def get_holidays(employee: str, from_date: str | datetime.date, to_date: str | d
 
 def is_lwp(leave_type):
 	lwp = frappe.db.sql("select is_lwp from `tabLeave Type` where name = %s", leave_type)
-	return lwp and cint(lwp[0][0]) or 0
+	return (lwp and cint(lwp[0][0])) or 0
 
 
 @frappe.whitelist()

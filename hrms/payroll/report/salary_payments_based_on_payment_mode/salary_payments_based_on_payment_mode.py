@@ -68,27 +68,27 @@ def prepare_data(entry):
 def get_data(filters, mode_of_payments):
 	data = []
 
-	conditions = get_conditions(filters)
+	conditions, values = get_conditions(filters)
 
 	entry = frappe.db.sql(
-		"""
+		f"""
 		select branch, mode_of_payment, sum(net_pay) as net_pay, sum(gross_pay) as gross_pay
 		from `tabSalary Slip` sal
-		where docstatus = 1 %s
+		where docstatus = 1 {conditions}
 		group by branch, mode_of_payment
-		"""
-		% (conditions),
+		""",
+		values,
 		as_dict=1,
 	)
 
 	branch_wise_entries, gross_pay = prepare_data(entry)
 
 	branches = frappe.db.sql_list(
-		"""
+		f"""
 		select distinct branch from `tabSalary Slip` sal
-		where docstatus = 1 %s
-	"""
-		% (conditions)
+		where docstatus = 1 {conditions}
+	""",
+		values,
 	)
 
 	total_row = {"total": 0, "branch": "Total"}

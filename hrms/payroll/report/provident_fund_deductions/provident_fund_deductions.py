@@ -57,26 +57,33 @@ def get_columns(filters):
 
 def get_conditions(filters):
 	conditions = [""]
+	values = {}
 
 	if filters.get("department"):
-		conditions.append("sal.department = '%s' " % (filters["department"]))
+		conditions.append("sal.department = %(department)s")
+		values["department"] = filters["department"]
 
 	if filters.get("branch"):
-		conditions.append("sal.branch = '%s' " % (filters["branch"]))
+		conditions.append("sal.branch = %(branch)s")
+		values["branch"] = filters["branch"]
 
 	if filters.get("company"):
-		conditions.append("sal.company = '%s' " % (filters["company"]))
+		conditions.append("sal.company = %(company)s")
+		values["company"] = filters["company"]
 
 	if filters.get("month"):
-		conditions.append("month(sal.start_date) = '%s' " % (filters["month"]))
+		conditions.append("month(sal.start_date) = %(month)s")
+		values["month"] = filters["month"]
 
 	if filters.get("year"):
-		conditions.append("year(start_date) = '%s' " % (filters["year"]))
+		conditions.append("year(start_date) = %(year)s")
+		values["year"] = filters["year"]
 
 	if filters.get("mode_of_payment"):
-		conditions.append("sal.mode_of_payment = '%s' " % (filters["mode_of_payment"]))
+		conditions.append("sal.mode_of_payment = %(mode_of_payment)s")
+		values["mode_of_payment"] = filters["mode_of_payment"]
 
-	return " and ".join(conditions)
+	return " and ".join(conditions), values
 
 
 def prepare_data(entry, component_type_dict):
@@ -108,13 +115,13 @@ def prepare_data(entry, component_type_dict):
 def get_data(filters):
 	data = []
 
-	conditions = get_conditions(filters)
+	conditions, values = get_conditions(filters)
 
 	salary_slips = frappe.db.sql(
-		""" select sal.name from `tabSalary Slip` sal
-		where docstatus = 1 %s
-		"""
-		% (conditions),
+		f""" select sal.name from `tabSalary Slip` sal
+		where docstatus = 1 {conditions}
+		""",
+		values,
 		as_dict=1,
 	)
 
@@ -128,17 +135,25 @@ def get_data(filters):
 	if not len(component_type_dict):
 		return []
 
+	component_keys = tuple(component_type_dict.keys())
+	combined_values = {**values}
+	component_placeholders = []
+	for i, key in enumerate(component_keys):
+		param_name = f"component_{i}"
+		component_placeholders.append(f"%({param_name})s")
+		combined_values[param_name] = key
+
 	# nosemgrep: frappe-semgrep-rules.rules.frappe-using-db-sql
 	entry = frappe.db.sql(
-		""" select sal.name, sal.employee, sal.employee_name, ded.salary_component, ded.amount
+		f""" select sal.name, sal.employee, sal.employee_name, ded.salary_component, ded.amount
 		from `tabSalary Slip` sal, `tabSalary Detail` ded
 		where sal.name = ded.parent
 		and ded.parentfield = 'deductions'
 		and ded.parenttype = 'Salary Slip'
-		and sal.docstatus = 1 {}
-		and ded.salary_component in ({})
-		""".format(conditions, ", ".join(["%s"] * len(component_type_dict.keys()))),
-		tuple(component_type_dict.keys()),
+		and sal.docstatus = 1 {conditions}
+		and ded.salary_component in ({", ".join(component_placeholders)})
+		""",
+		combined_values,
 		as_dict=1,
 	)
 

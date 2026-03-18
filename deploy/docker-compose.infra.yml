@@ -1,0 +1,42 @@
+# Shared infrastructure services (MariaDB + Redis) for an environment tier.
+# Deploy one instance per tier (dev, prod). All app deployments (main + previews)
+# in the same tier connect to this shared infrastructure.
+#
+# Usage: docker compose -p hrms-${ENVIRONMENT}-infra --env-file .env up -d
+
+services:
+  mariadb:
+    image: mariadb:10.8
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --skip-innodb-read-only-compressed
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
+  redis-cache:
+    image: redis:alpine
+    restart: unless-stopped
+
+  redis-queue:
+    image: redis:alpine
+    restart: unless-stopped
+
+  redis-socketio:
+    image: redis:alpine
+    restart: unless-stopped
+
+volumes:
+  mariadb-data:
+
+networks:
+  default:
+    name: ${INFRA_NETWORK:-hrms-infra}

@@ -1,6 +1,8 @@
 import sys
-import requests
 from urllib.parse import urlparse
+
+import requests
+from requests.exceptions import RequestException
 
 
 def uri_validator(x):
@@ -23,7 +25,15 @@ def docs_link_exists(body):
 
 if __name__ == "__main__":
 	pr = sys.argv[1]
-	response = requests.get("https://api.github.com/repos/frappe/hrms/pulls/{}".format(pr))
+	try:
+		response = requests.get(f"https://api.github.com/repos/frappe/hrms/pulls/{pr}", timeout=10)
+	except RequestException as e:
+		print(f"Failed to fetch PR {pr}: {e}")
+		sys.exit(1)
+
+	if not response.ok:
+		print(f"GitHub API returned {response.status_code} for PR {pr}")
+		sys.exit(1)
 
 	if response.ok:
 		payload = response.json()

@@ -1,0 +1,293 @@
+version: 2.1
+
+parameters:
+  run-cleanup:
+    type: boolean
+    default: false
+  pr-number:
+    type: string
+    default: ""
+
+executors:
+  deployer:
+    docker:
+      - image: cimg/base:2024.01
+    resource_class: medium
+
+commands:
+  setup-ssh:
+    description: Configure SSH access to VPS
+    steps:
+      - add_ssh_keys
+      - run:
+          name: Add VPS to known hosts
+          command: |
+            mkdir -p ~/.ssh
+            SCANNED_KEY=$(ssh-keyscan -H ${VPS_HOST} 2>/dev/null)
+            if [ -z "${SCANNED_KEY}" ]; then
+              echo "ERROR: Could not retrieve host key for ${VPS_HOST}"
+              exit 1
+            fi
+            if [ -n "${EXPECTED_VPS_HOST_FINGERPRINT}" ]; then
+              ACTUAL_FP=$(echo "${SCANNED_KEY}" | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' | head -1)
+              if [ "${ACTUAL_FP}" != "${EXPECTED_VPS_HOST_FINGERPRINT}" ]; then
+                echo "ERROR: VPS host key fingerprint mismatch!"
+                echo "Expected: ${EXPECTED_VPS_HOST_FINGERPRINT}"
+                echo "Actual:   ${ACTUAL_FP}"
+                exit 1
+              fi
+            fi
+            echo "${SCANNED_KEY}" >> ~/.ssh/known_hosts
+
+jobs:
+  lint-and-test:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: pip install ruff
+      - run:
+          name: Lint check
+          command: ruff check .
+      - run:
+          name: Format check
+          command: ruff format --check .
+
+  build-image:
+    executor: deployer
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: docker24
+          docker_layer_caching: true
+      - run:
+          name: Build Docker image
+          command: |
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
+            SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            if [ -n "${FRAPPE_DOCKER_REF}" ]; then
+              git clone --depth 1 --branch "${FRAPPE_DOCKER_REF}" https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
+            else
+              echo "WARNING: FRAPPE_DOCKER_REF not set, using default branch. Set FRAPPE_DOCKER_REF for deterministic builds."
+              git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
+            fi
+
+            # Resolve branch placeholders in apps.json (no secrets injected)
+            if [ ! -f ".github/helper/apps.json" ]; then
+              echo "ERROR: .github/helper/apps.json not found"
+              exit 1
+            fi
+            HRMS_BRANCH="${CIRCLE_BRANCH}"
+            ERPNEXT_REF="${ERPNEXT_REF:-develop}"
+            PAYMENTS_REF="${PAYMENTS_REF:-develop}"
+            sed -e "s|{{HRMS_BRANCH}}|${HRMS_BRANCH}|g" \
+                -e "s|{{ERPNEXT_REF}}|${ERPNEXT_REF}|g" \
+                -e "s|{{PAYMENTS_REF}}|${PAYMENTS_REF}|g" \
+              .github/helper/apps.json > /tmp/apps.json
+            APPS_JSON_BASE64=$(cat /tmp/apps.json | base64 -w 0)
+
+            export DOCKER_BUILDKIT=1
+            docker build \
+              --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
+              --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \
+              --secret "id=github_token,env=GITHUB_TOKEN" \
+              -t ${IMAGE_REPO}:${CIRCLE_SHA1:0:7} \
+              -t ${IMAGE_REPO}:${SANITIZED_BRANCH} \
+              -f /tmp/frappe_docker/images/layered/Containerfile \
+              /tmp/frappe_docker
+      - run:
+          name: Push Docker image
+          command: |
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
+            SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+            docker push ${IMAGE_REPO}:${CIRCLE_SHA1:0:7}
+            docker push ${IMAGE_REPO}:${SANITIZED_BRANCH}
+
+  deploy-dev:
+    executor: deployer
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Deploy to dev environment
+          command: |
+            GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh dev "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" && rm -f /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml /tmp/deploy-secrets.env'
+
+  deploy-prod:
+    executor: deployer
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Deploy to prod environment
+          command: |
+            GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh prod "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" && rm -f /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml /tmp/deploy-secrets.env'
+
+  deploy-pr-preview:
+    executor: deployer
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Deploy PR preview
+          command: |
+            PR_NUM=$(echo "${CIRCLE_PULL_REQUEST}" | grep -oP '\d+$' || echo "")
+            if [ -z "${PR_NUM}" ]; then
+              echo "No PR number found, skipping preview deployment."
+              exit 0
+            fi
+            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
+            GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_PR_NUM=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\nDEPLOY_DOMAIN=%s\nDEPLOY_IMAGE_REPO=%s\nDEPLOY_IMAGE_TAG=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${PR_NUM}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" "${PREVIEW_DOMAIN}" "${IMAGE_REPO}" "${CIRCLE_SHA1:0:7}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-preview.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
+            set +e
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh "${DEPLOY_PR_NUM}" dev "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" "${DEPLOY_DOMAIN}" "${DEPLOY_IMAGE_REPO}" "${DEPLOY_IMAGE_TAG}" && rm -f /tmp/deploy-secrets.env' 2>&1 | tee /tmp/deploy-output.txt
+            SSH_EXIT=${PIPESTATUS[0]}
+            ssh ${VPS_USER}@${VPS_HOST} 'rm -f /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml'
+            set -e
+            if [ "${SSH_EXIT}" -ne 0 ]; then
+              echo "ERROR: Preview deployment failed with exit code ${SSH_EXIT}"
+              exit ${SSH_EXIT}
+            fi
+            DEPLOY_OUTPUT=$(cat /tmp/deploy-output.txt)
+
+            PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
+            COMMENT_MARKER="<!-- preview-comment:preview-deployment -->"
+            # Build JSON payload safely using jq to escape all special characters
+            COMMENT_BODY=$(printf '%s\n**Preview deployment ready!**\n\n%s\n\n_This preview will be automatically cleaned up when the PR is closed or merged._' "${COMMENT_MARKER}" "${PREVIEW_URL}")
+            JSON_PAYLOAD=$(jq -n --arg body "${COMMENT_BODY}" '{body: $body}')
+
+            # Search for an existing preview comment to update
+            EXISTING_COMMENT_ID=$(curl -s \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
+              | jq -r '.[] | select(.body | contains("preview-comment:preview-deployment")) | .id' | head -1)
+
+            if [ -n "${EXISTING_COMMENT_ID}" ] && [ "${EXISTING_COMMENT_ID}" != "null" ]; then
+              curl -s -X PATCH \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/comments/${EXISTING_COMMENT_ID}" \
+                -d "${JSON_PAYLOAD}"
+            else
+              curl -s -X POST \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
+                -d "${JSON_PAYLOAD}"
+            fi
+
+  cleanup-pr-preview:
+    executor: deployer
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Cleanup PR preview
+          command: |
+            PR_NUM="<< pipeline.parameters.pr-number >>"
+            if [ -z "${PR_NUM}" ]; then
+              echo "No PR number provided, skipping cleanup."
+              exit 0
+            fi
+            # Validate PR_NUM is a positive integer
+            if ! echo "${PR_NUM}" | grep -qE '^[0-9]+$'; then
+              echo "ERROR: Invalid PR number: ${PR_NUM}"
+              exit 1
+            fi
+            scp deploy/scripts/cleanup-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/cleanup-preview.sh
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/cleanup-preview.sh && /tmp/cleanup-preview.sh '${PR_NUM}' && rm /tmp/cleanup-preview.sh"
+
+workflows:
+  # Run on every PR branch
+  pr-checks:
+    unless: << pipeline.parameters.run-cleanup >>
+    jobs:
+      - lint-and-test:
+          filters:
+            branches:
+              ignore:
+                - prod
+                - dev
+
+      - build-image:
+          context: hrms-deploy
+          requires:
+            - lint-and-test
+          filters:
+            branches:
+              ignore:
+                - prod
+                - dev
+
+      - deploy-pr-preview:
+          context: hrms-deploy
+          requires:
+            - build-image
+          filters:
+            branches:
+              ignore:
+                - prod
+                - dev
+
+  # Deploy to dev when merged into dev branch
+  deploy-dev-workflow:
+    unless: << pipeline.parameters.run-cleanup >>
+    jobs:
+      - build-image:
+          context: hrms-deploy
+          filters:
+            branches:
+              only: dev
+
+      - deploy-dev:
+          context: hrms-deploy
+          requires:
+            - build-image
+          filters:
+            branches:
+              only: dev
+
+  # Deploy to prod when merged into prod branch
+  deploy-prod-workflow:
+    unless: << pipeline.parameters.run-cleanup >>
+    jobs:
+      - build-image:
+          context: hrms-deploy
+          filters:
+            branches:
+              only: prod
+
+      - deploy-prod:
+          context: hrms-deploy
+          requires:
+            - build-image
+          filters:
+            branches:
+              only: prod
+
+  # Cleanup PR preview (triggered via API with run-cleanup=true and pr-number=<num>)
+  cleanup-preview-workflow:
+    when: << pipeline.parameters.run-cleanup >>
+    jobs:
+      - cleanup-pr-preview:
+          context: hrms-deploy

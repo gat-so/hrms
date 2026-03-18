@@ -173,10 +173,8 @@ class StaffingPlan(Document):
 		)[0]
 
 		if (
-			children_details
-			and cint(staffing_plan_detail.vacancies) < cint(children_details.vacancies)
-			or flt(staffing_plan_detail.total_estimated_cost) < flt(children_details.total_estimated_cost)
-		):
+			children_details and cint(staffing_plan_detail.vacancies) < cint(children_details.vacancies)
+		) or flt(staffing_plan_detail.total_estimated_cost) < flt(children_details.total_estimated_cost):
 			frappe.throw(
 				_(
 					"Subsidiary companies have already planned for {1} vacancies at a budget of {2}. Staffing Plan for {0} should allocate more vacancies and budget for {3} than planned for its subsidiary companies"

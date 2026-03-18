@@ -908,7 +908,7 @@ class TestSalarySlip(IntegrationTestCase):
 
 	def test_payroll_frequency(self):
 		fiscal_year = get_fiscal_year(nowdate(), company=erpnext.get_default_company())[0]
-		month = "%02d" % getdate(nowdate()).month
+		month = f"{getdate(nowdate()).month:02d}"
 		m = get_month_details(fiscal_year, month)
 
 		for payroll_frequency in ["Monthly", "Bimonthly", "Fortnightly", "Weekly", "Daily"]:
@@ -1020,7 +1020,7 @@ class TestSalarySlip(IntegrationTestCase):
 		)
 
 		# clear salary slip for this employee
-		frappe.db.sql("DELETE FROM `tabSalary Slip` where employee_name = '%s'" % employee_name)
+		frappe.db.sql("DELETE FROM `tabSalary Slip` where employee_name = %s", (employee_name,))
 
 		create_salary_slips_for_payroll_period(
 			applicant, salary_structure.name, payroll_period, deduct_random=False, num=3
@@ -1065,7 +1065,7 @@ class TestSalarySlip(IntegrationTestCase):
 			"Salary Structure Assignment",
 		]
 		for doc in delete_docs:
-			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee='{employee}'")
+			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee=%s", (employee,))
 
 		from hrms.payroll.doctype.salary_structure.test_salary_structure import make_salary_structure
 
@@ -1198,7 +1198,7 @@ class TestSalarySlip(IntegrationTestCase):
 			"Salary Structure Assignment",
 		]
 		for doc in delete_docs:
-			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee='{employee}'")
+			frappe.db.sql(f"DELETE FROM `tab{doc}` WHERE employee=%s", (employee,))
 
 		from hrms.payroll.doctype.salary_structure.test_salary_structure import make_salary_structure
 
@@ -2539,7 +2539,7 @@ def setup_test():
 		"Salary Structure Assignment",
 		"Payroll Period",
 	]:
-		frappe.db.sql("delete from `tab%s`" % dt)
+		frappe.db.sql(f"delete from `tab{dt}`")
 
 	make_holiday_list()
 	make_payroll_period()

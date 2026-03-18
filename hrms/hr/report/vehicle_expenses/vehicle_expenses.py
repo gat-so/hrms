@@ -60,7 +60,6 @@ def get_columns():
 
 
 def get_vehicle_log_data(filters):
-	start_date, end_date = get_period_dates(filters)
 	conditions, values = get_conditions(filters)
 
 	# nosemgrep: frappe-semgrep-rules.rules.frappe-using-db-sql

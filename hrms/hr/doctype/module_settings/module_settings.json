@@ -1,0 +1,233 @@
+{
+ "actions": [],
+ "creation": "2026-03-18 00:00:00.000000",
+ "doctype": "DocType",
+ "document_type": "Other",
+ "engine": "InnoDB",
+ "field_order": [
+  "hrms_modules_tab",
+  "hrms_modules_section",
+  "hrms_modules_description",
+  "enable_people",
+  "enable_leaves",
+  "enable_payroll",
+  "enable_expenses",
+  "column_break_hrms_1",
+  "enable_recruitment",
+  "enable_shift_and_attendance",
+  "enable_tenure",
+  "enable_performance",
+  "column_break_hrms_2",
+  "enable_tax_and_benefits",
+  "erpnext_modules_tab",
+  "erpnext_modules_section",
+  "erpnext_modules_description",
+  "enable_accounting",
+  "enable_buying",
+  "enable_selling",
+  "enable_stock",
+  "column_break_erpnext_1",
+  "enable_assets",
+  "enable_crm",
+  "enable_manufacturing",
+  "enable_quality",
+  "column_break_erpnext_2",
+  "enable_support",
+  "enable_projects"
+ ],
+ "fields": [
+  {
+   "fieldname": "hrms_modules_tab",
+   "fieldtype": "Tab Break",
+   "label": "HRMS Modules"
+  },
+  {
+   "fieldname": "hrms_modules_section",
+   "fieldtype": "Section Break",
+   "label": "HRMS Modules"
+  },
+  {
+   "fieldname": "hrms_modules_description",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted\">Enable or disable HRMS modules. Disabled modules will be hidden from the sidebar navigation. The People module cannot be disabled as it is required for core HR functionality.</p>"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_people",
+   "fieldtype": "Check",
+   "label": "People",
+   "read_only": 1,
+   "description": "Core module - cannot be disabled"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_leaves",
+   "fieldtype": "Check",
+   "label": "Leaves"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_payroll",
+   "fieldtype": "Check",
+   "label": "Payroll"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_expenses",
+   "fieldtype": "Check",
+   "label": "Expenses"
+  },
+  {
+   "fieldname": "column_break_hrms_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_recruitment",
+   "fieldtype": "Check",
+   "label": "Recruitment"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_shift_and_attendance",
+   "fieldtype": "Check",
+   "label": "Shift & Attendance"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_tenure",
+   "fieldtype": "Check",
+   "label": "Tenure"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_performance",
+   "fieldtype": "Check",
+   "label": "Performance"
+  },
+  {
+   "fieldname": "column_break_hrms_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_tax_and_benefits",
+   "fieldtype": "Check",
+   "label": "Tax & Benefits"
+  },
+  {
+   "fieldname": "erpnext_modules_tab",
+   "fieldtype": "Tab Break",
+   "label": "ERPNext Modules"
+  },
+  {
+   "fieldname": "erpnext_modules_section",
+   "fieldtype": "Section Break",
+   "label": "ERPNext Modules"
+  },
+  {
+   "fieldname": "erpnext_modules_description",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted\">Enable or disable ERPNext modules. Disabled modules will be hidden from the sidebar navigation.</p>"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_accounting",
+   "fieldtype": "Check",
+   "label": "Accounting"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_buying",
+   "fieldtype": "Check",
+   "label": "Buying"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_selling",
+   "fieldtype": "Check",
+   "label": "Selling"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_stock",
+   "fieldtype": "Check",
+   "label": "Stock"
+  },
+  {
+   "fieldname": "column_break_erpnext_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_assets",
+   "fieldtype": "Check",
+   "label": "Assets"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_crm",
+   "fieldtype": "Check",
+   "label": "CRM"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_manufacturing",
+   "fieldtype": "Check",
+   "label": "Manufacturing"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_quality",
+   "fieldtype": "Check",
+   "label": "Quality"
+  },
+  {
+   "fieldname": "column_break_erpnext_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_support",
+   "fieldtype": "Check",
+   "label": "Support"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_projects",
+   "fieldtype": "Check",
+   "label": "Projects"
+  }
+ ],
+ "icon": "fa fa-toggle-on",
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "HR",
+ "name": "Module Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": [],
+ "track_changes": 1
+}

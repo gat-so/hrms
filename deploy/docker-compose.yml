@@ -51,12 +51,15 @@ services:
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
+        echo "Copying assets to shared volume...";
+        rsync -a --delete /home/frappe/frappe-bench/sites/assets/ /shared-assets/;
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - assets:/shared-assets
 
   create-site:
     image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
@@ -199,6 +202,7 @@ services:
       UPSTREAM_REAL_IP_RECURSIVE: "off"
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
+      - assets:/home/frappe/frappe-bench/sites/assets:ro
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule=Host(`${TRAEFIK_DOMAIN}`)"
@@ -216,6 +220,7 @@ services:
 volumes:
   mariadb-data:
   sites-data:
+  assets:
   logs:
 
 networks:

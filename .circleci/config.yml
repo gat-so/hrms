@@ -81,7 +81,7 @@ jobs:
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
 
   deploy-prod:
     executor: deployer
@@ -94,7 +94,7 @@ jobs:
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
 
   deploy-pr-preview:
     executor: deployer
@@ -113,7 +113,7 @@ jobs:
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
             REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}.git"
             scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
-            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh"
+            ssh ${VPS_USER}@${VPS_HOST} "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh"
 
             PREVIEW_URL="https://hrms-${PR_NUM}.${PREVIEW_DOMAIN:-preview.example.com}"
             curl -s -X POST \

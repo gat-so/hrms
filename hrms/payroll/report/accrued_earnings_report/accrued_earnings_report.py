@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
+import html
 import json
 
 import frappe
@@ -168,8 +169,8 @@ def get_data(filters):
 
 		# Add create additional salary button only for non-flexible benefits with unpaid accrual
 		if not row_data["flexible_benefit"] and row_data["unpaid_accrual"] > 0:
-			employee_js = json.dumps(row_data["employee"])
-			component_js = json.dumps(row_data["salary_component"])
+			employee_js = html.escape(json.dumps(row_data["employee"]))
+			component_js = html.escape(json.dumps(row_data["salary_component"]))
 			accrual = row_data["unpaid_accrual"]
 			row_data["create_additional_salary"] = f"""
 				<a onclick="create_additional_salary({employee_js}, {component_js}, {accrual})">

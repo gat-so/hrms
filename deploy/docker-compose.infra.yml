@@ -18,7 +18,7 @@ services:
       - mariadb-data:/var/lib/mysql
     restart: unless-stopped
     healthcheck:
-      test: mysqladmin ping -h localhost --password=${DB_ROOT_PASSWORD}
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       retries: 5
 

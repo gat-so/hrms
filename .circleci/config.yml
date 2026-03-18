@@ -67,22 +67,32 @@ jobs:
           command: |
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             SANITIZED_BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-            git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
+            if [ -n "${FRAPPE_DOCKER_REF}" ]; then
+              git clone --depth 1 --branch "${FRAPPE_DOCKER_REF}" https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
+            else
+              echo "WARNING: FRAPPE_DOCKER_REF not set, using default branch. Set FRAPPE_DOCKER_REF for deterministic builds."
+              git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
+            fi
 
-            # Inject GitHub token and resolve branch placeholder in apps.json
+            # Resolve branch placeholders in apps.json (no secrets injected)
             if [ ! -f ".github/helper/apps.json" ]; then
               echo "ERROR: .github/helper/apps.json not found"
               exit 1
             fi
             HRMS_BRANCH="${CIRCLE_BRANCH}"
-            sed -e "s|https://github.com/gat-so/|https://${GITHUB_TOKEN}@github.com/gat-so/|g" \
-                -e "s|{{HRMS_BRANCH}}|${HRMS_BRANCH}|g" \
+            ERPNEXT_REF="${ERPNEXT_REF:-develop}"
+            PAYMENTS_REF="${PAYMENTS_REF:-develop}"
+            sed -e "s|{{HRMS_BRANCH}}|${HRMS_BRANCH}|g" \
+                -e "s|{{ERPNEXT_REF}}|${ERPNEXT_REF}|g" \
+                -e "s|{{PAYMENTS_REF}}|${PAYMENTS_REF}|g" \
               .github/helper/apps.json > /tmp/apps.json
             APPS_JSON_BASE64=$(cat /tmp/apps.json | base64 -w 0)
 
+            export DOCKER_BUILDKIT=1
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \
+              --secret "id=github_token,env=GITHUB_TOKEN" \
               -t ${IMAGE_REPO}:${CIRCLE_SHA1:0:7} \
               -t ${IMAGE_REPO}:${SANITIZED_BRANCH} \
               -f /tmp/frappe_docker/images/layered/Containerfile \
@@ -105,8 +115,12 @@ jobs:
           name: Deploy to dev environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
-            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh dev '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh dev "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" && rm -f /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml /tmp/deploy-secrets.env'
 
   deploy-prod:
     executor: deployer
@@ -117,8 +131,12 @@ jobs:
           name: Deploy to prod environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
-            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh prod '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh prod "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" && rm -f /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml /tmp/deploy-secrets.env'
 
   deploy-pr-preview:
     executor: deployer
@@ -135,11 +153,15 @@ jobs:
             fi
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-preview.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_PR_NUM=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\nDEPLOY_DOMAIN=%s\nDEPLOY_IMAGE_REPO=%s\nDEPLOY_IMAGE_TAG=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${PR_NUM}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" "${PREVIEW_DOMAIN}" "${IMAGE_REPO}" "${CIRCLE_SHA1:0:7}" \
+              > /tmp/deploy-secrets.env
+            scp /tmp/deploy-secrets.env deploy/scripts/deploy-preview.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            rm -f /tmp/deploy-secrets.env
             set +e
-            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh '${PR_NUM}' 'dev' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}'" 2>&1 | tee /tmp/deploy-output.txt
+            ssh ${VPS_USER}@${VPS_HOST} 'set -e && set -a && source /tmp/deploy-secrets.env && set +a && echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh "${DEPLOY_PR_NUM}" dev "${DEPLOY_ORG}" "${DEPLOY_REPO}" "${DEPLOY_BRANCH}" "${DEPLOY_DOMAIN}" "${DEPLOY_IMAGE_REPO}" "${DEPLOY_IMAGE_TAG}" && rm -f /tmp/deploy-secrets.env' 2>&1 | tee /tmp/deploy-output.txt
             SSH_EXIT=${PIPESTATUS[0]}
-            ssh ${VPS_USER}@${VPS_HOST} "rm -f /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
+            ssh ${VPS_USER}@${VPS_HOST} 'rm -f /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml'
             set -e
             if [ "${SSH_EXIT}" -ne 0 ]; then
               echo "ERROR: Preview deployment failed with exit code ${SSH_EXIT}"
@@ -148,11 +170,29 @@ jobs:
             DEPLOY_OUTPUT=$(cat /tmp/deploy-output.txt)
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
-            curl -s -X POST \
+            COMMENT_MARKER="<!-- preview-comment:preview-deployment -->"
+            COMMENT_BODY="${COMMENT_MARKER}\n**Preview deployment ready!**\n\n${PREVIEW_URL}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._"
+
+            # Search for an existing preview comment to update
+            EXISTING_COMMENT_ID=$(curl -s \
               -H "Authorization: token ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github.v3+json" \
               "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
-              -d "{\"body\":\"**Preview deployment ready!**\n\n${PREVIEW_URL}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._\"}"
+              | grep -B5 "preview-comment:preview-deployment" | grep '"id"' | head -1 | grep -oE '[0-9]+' || echo "")
+
+            if [ -n "${EXISTING_COMMENT_ID}" ]; then
+              curl -s -X PATCH \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/comments/${EXISTING_COMMENT_ID}" \
+                -d "{\"body\":\"${COMMENT_BODY}\"}"
+            else
+              curl -s -X POST \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
+                -d "{\"body\":\"${COMMENT_BODY}\"}"
+            fi
 
   cleanup-pr-preview:
     executor: deployer

@@ -66,8 +66,8 @@ for tracker_file in ${PREVIEW_DIR}/.pr-*; do
 
         # Drop site from shared MariaDB before tearing down
         if [ -f "${DEPLOY_DIR}/.env" ]; then
-            SITE_NAME=$(grep '^SITE_NAME=' "${DEPLOY_DIR}/.env" | cut -d= -f2)
-            DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${DEPLOY_DIR}/.env" | cut -d= -f2)
+            SITE_NAME=$(grep '^SITE_NAME=' "${DEPLOY_DIR}/.env" | cut -d= -f2-)
+            DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${DEPLOY_DIR}/.env" | cut -d= -f2-)
 
             if [ -n "${SITE_NAME}" ] && [ -n "${DB_ROOT_PASSWORD}" ]; then
                 docker compose -p "${PROJECT_NAME}" --env-file "${DEPLOY_DIR}/.env" \
@@ -79,7 +79,16 @@ for tracker_file in ${PREVIEW_DIR}/.pr-*; do
 
         cd "${DEPLOY_DIR}"
         docker compose -p "${PROJECT_NAME}" down -v --remove-orphans 2>/dev/null || true
-        sudo rm -rf "${DEPLOY_DIR}"
+
+        # Verify DEPLOY_DIR is inside PREVIEW_DIR before removal
+        DEPLOY_REAL=$(realpath "${DEPLOY_DIR}")
+        PREVIEW_REAL=$(realpath "${PREVIEW_DIR}")
+        if [ "${DEPLOY_REAL}" = "${PREVIEW_REAL}" ] || [ "${DEPLOY_REAL#${PREVIEW_REAL}/}" != "${DEPLOY_REAL}" ]; then
+            sudo rm -rf "${DEPLOY_DIR}"
+        else
+            echo "ERROR: ${DEPLOY_DIR} resolves outside ${PREVIEW_DIR}, skipping removal"
+            continue
+        fi
         rm -f "$tracker_file"
 
         echo "  Done."

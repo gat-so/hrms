@@ -25,15 +25,26 @@ ENV_FILE="/opt/hrms/${ENV}/.env"
 # 4. Auto-generate one (first-time bootstrap)
 INFRA_ENV_FILE="${INFRA_DIR}/.env"
 if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${INFRA_ENV_FILE}" ]; then
-    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2)
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2-)
 fi
 if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${ENV_FILE}" ]; then
-    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${ENV_FILE}" | cut -d= -f2)
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${ENV_FILE}" | cut -d= -f2-)
 fi
 if [ -z "${DB_ROOT_PASSWORD}" ]; then
     DB_ROOT_PASSWORD=$(openssl rand -hex 16)
     echo "Generated new DB_ROOT_PASSWORD for '${ENV}' infrastructure."
-    echo "IMPORTANT: Save this password in ${ENV_FILE} before deploying the main environment."
+    # Persist generated password to the environment's .env file
+    if [ -f "${ENV_FILE}" ]; then
+        sed -i "s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}/" "${ENV_FILE}"
+        if ! grep -q '^DB_ROOT_PASSWORD=' "${ENV_FILE}"; then
+            echo "DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}" >> "${ENV_FILE}"
+        fi
+    else
+        sudo mkdir -p "$(dirname "${ENV_FILE}")"
+        echo "DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}" > "${ENV_FILE}"
+        chmod 600 "${ENV_FILE}"
+    fi
+    echo "DB_ROOT_PASSWORD written to ${ENV_FILE}"
 fi
 
 # Ensure directory exists

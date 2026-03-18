@@ -34,7 +34,13 @@ if [ "${TARGET_ENV}" != "dev" ] && [ "${TARGET_ENV}" != "prod" ]; then
     exit 1
 fi
 
-REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+REPO_URL="https://github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+
+# Set up ephemeral credential helper so the token is never written to .git/config
+GIT_ASKPASS_SCRIPT=$(mktemp)
+printf '#!/bin/sh\necho "%s"\n' "${GITHUB_TOKEN}" > "${GIT_ASKPASS_SCRIPT}"
+chmod 700 "${GIT_ASKPASS_SCRIPT}"
+export GIT_ASKPASS="${GIT_ASKPASS_SCRIPT}"
 
 PREVIEW_BASE="/opt/hrms/preview"
 INFRA_NETWORK="hrms-${TARGET_ENV}-infra"
@@ -60,10 +66,10 @@ bash "${SCRIPT_DIR}/deploy-infra.sh" "${TARGET_ENV}"
 # --- Get DB credentials (check infra .env first, then target env .env) ---
 INFRA_ENV_FILE="/opt/hrms/${TARGET_ENV}-infra/.env"
 if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${INFRA_ENV_FILE}" ]; then
-    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2)
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2-)
 fi
 if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${TARGET_ENV_FILE}" ]; then
-    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${TARGET_ENV_FILE}" | cut -d= -f2)
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${TARGET_ENV_FILE}" | cut -d= -f2-)
 fi
 
 if [ -z "${DB_ROOT_PASSWORD}" ]; then
@@ -97,7 +103,7 @@ fi
 
 # Create/update preview .env (preserve ADMIN_PASSWORD on updates)
 if [ "${IS_UPDATE}" = true ]; then
-    ADMIN_PASSWORD=$(grep '^ADMIN_PASSWORD=' "${DEPLOY_DIR}/.env" | cut -d= -f2)
+    ADMIN_PASSWORD=$(grep '^ADMIN_PASSWORD=' "${DEPLOY_DIR}/.env" | cut -d= -f2-)
 else
     ADMIN_PASSWORD=$(openssl rand -hex 16)
 fi
@@ -142,12 +148,6 @@ NGINX_CONTAINER=$(docker compose -p "${PROJECT_NAME}" --env-file .env ps nginx -
 if [ -n "${NGINX_CONTAINER}" ]; then
     docker network connect traefik_network "${NGINX_CONTAINER}" 2>/dev/null || true
 fi
-
-# --- Force Traefik to rediscover containers ---
-echo "Restarting Traefik to discover new containers..."
-docker restart traefik-traefik-1 2>/dev/null \
-    || docker restart $(docker ps -q --filter name=traefik) 2>/dev/null \
-    || echo "WARNING: Could not restart Traefik"
 
 # --- Diagnostics ---
 echo ""
@@ -203,5 +203,11 @@ echo "Preview deployed at: https://${SITE_NAME}"
 if [ "${IS_UPDATE}" = true ]; then
     echo "Data preserved from previous deployment."
 else
-    echo "Fresh deployment. Admin password: ${ADMIN_PASSWORD}"
+    SECRETS_FILE="${DEPLOY_DIR}/.admin_password"
+    printf '%s\n' "${ADMIN_PASSWORD}" > "${SECRETS_FILE}"
+    chmod 600 "${SECRETS_FILE}"
+    echo "Fresh deployment. Admin password saved to ${SECRETS_FILE}"
 fi
+
+# Clean up ephemeral credential helper
+rm -f "${GIT_ASKPASS_SCRIPT}"

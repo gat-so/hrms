@@ -3,6 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
+from frappe.utils import cint
 
 # Mapping of field names to workspace names
 HRMS_MODULE_MAP = {
@@ -62,7 +63,7 @@ class ModuleSettings(Document):
 	# end: auto-generated types
 
 	def validate(self):
-		if not self.enable_people:
+		if not cint(self.enable_people):
 			frappe.throw(
 				frappe._("The People module cannot be disabled as it is required for core HR functionality.")
 			)
@@ -91,7 +92,7 @@ class ModuleSettings(Document):
 			workspace_doc.public = new_public
 			workspace_doc.save()
 		except frappe.DoesNotExistError:
-			pass
+			frappe.logger().warning(f"Workspace '{workspace_name}' not found, skipping toggle")
 		except Exception:
 			frappe.log_error(
 				title=f"Failed to toggle workspace {workspace_name}",

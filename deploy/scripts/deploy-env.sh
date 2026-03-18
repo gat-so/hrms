@@ -20,10 +20,15 @@ if [ -z "${GITHUB_TOKEN}" ]; then
     exit 1
 fi
 
-REPO_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+REPO_URL="https://github.com/${GITHUB_ORG}/${REPO_NAME}.git"
+
+# Set up ephemeral credential helper so the token is never written to .git/config
+GIT_ASKPASS_SCRIPT=$(mktemp)
+printf '#!/bin/sh\necho "%s"\n' "${GITHUB_TOKEN}" > "${GIT_ASKPASS_SCRIPT}"
+chmod 700 "${GIT_ASKPASS_SCRIPT}"
+export GIT_ASKPASS="${GIT_ASKPASS_SCRIPT}"
 
 DEPLOY_DIR="/opt/hrms/${ENV}"
-INFRA_NETWORK="hrms-${ENV}-infra"
 
 # Ensure deploy directory exists
 sudo mkdir -p "${DEPLOY_DIR}"
@@ -73,5 +78,8 @@ docker compose -p "hrms-${ENV}" \
 # Run migrations
 docker compose -p "hrms-${ENV}" exec -T backend \
     bench --site "${SITE_NAME:-hrms.localhost}" migrate --skip-failing
+
+# Clean up ephemeral credential helper
+rm -f "${GIT_ASKPASS_SCRIPT}"
 
 echo "Deployment of ${ENV} complete!"

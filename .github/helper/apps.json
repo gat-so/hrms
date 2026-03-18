@@ -1,5 +1,5 @@
 [
-    {"url": "https://github.com/frappe/erpnext", "branch": "develop"},
-    {"url": "https://github.com/frappe/payments", "branch": "develop"},
+    {"url": "https://github.com/frappe/erpnext", "branch": "{{ERPNEXT_REF}}"},
+    {"url": "https://github.com/frappe/payments", "branch": "{{PAYMENTS_REF}}"},
     {"url": "https://github.com/gat-so/hrms", "branch": "{{HRMS_BRANCH}}"}
 ]

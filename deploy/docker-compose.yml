@@ -50,14 +50,17 @@ services:
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         echo "Copying assets into sites volume...";
-        rm -rf sites/assets;
         mkdir -p sites/assets;
         for app in $$(ls apps/); do
           if [ -d "apps/$$app/$$app/public" ]; then
-            cp -r "apps/$$app/$$app/public" "sites/assets/$$app";
+            rm -rf "sites/assets/$$app";
+            cp -rL "apps/$$app/$$app/public" "sites/assets/$$app";
           fi;
         done;
-        echo "Assets copied.";
+        echo "Restoring assets.json from image backup...";
+        cp /home/frappe/assets.json sites/assets/assets.json 2>/dev/null || true;
+        cp /home/frappe/assets-rtl.json sites/assets/assets-rtl.json 2>/dev/null || true;
+        echo "Assets configured.";
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"
@@ -102,13 +105,21 @@ services:
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
         echo "${SITE_NAME}" > sites/currentsite.txt;
-        echo "Resolving asset symlinks to real files for nginx...";
-        for link in $$(find sites/assets -maxdepth 1 -type l); do
-          target=$$(readlink -f "$$link");
-          rm "$$link";
-          cp -rL "$$target" "$$link";
+        echo "Rebuilding assets for nginx (replacing symlinks with real files)...";
+        for app in $$(ls apps/); do
+          if [ -d "apps/$$app/$$app/public" ]; then
+            rm -rf "sites/assets/$$app";
+            cp -rL "apps/$$app/$$app/public" "sites/assets/$$app";
+            echo "  Copied $$app";
+          fi;
         done;
-        echo "Assets resolved.";
+        cp /home/frappe/assets.json sites/assets/assets.json 2>/dev/null || true;
+        cp /home/frappe/assets-rtl.json sites/assets/assets-rtl.json 2>/dev/null || true;
+        echo "Asset manifest:";
+        cat sites/assets/assets.json 2>/dev/null | head -c 200 || echo "  WARNING: assets.json missing!";
+        echo "";
+        ls -la sites/assets/ 2>/dev/null || true;
+        echo "Assets ready.";
     environment:
       <<: *common-env
       SITE_NAME: ${SITE_NAME:-hrms.localhost}

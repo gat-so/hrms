@@ -54,6 +54,9 @@ jobs:
               .github/helper/apps.json > /tmp/apps.json
             APPS_JSON_BASE64=$(cat /tmp/apps.json | base64 -w 0)
 
+            # Backup assets.json into a non-volume path so it survives the sites volume mount
+            echo 'RUN cp /home/frappe/frappe-bench/sites/assets/assets.json /home/frappe/assets.json 2>/dev/null || true && cp /home/frappe/frappe-bench/sites/assets/assets-rtl.json /home/frappe/assets-rtl.json 2>/dev/null || true' >> /tmp/frappe_docker/images/layered/Containerfile
+
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \

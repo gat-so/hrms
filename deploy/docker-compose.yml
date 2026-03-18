@@ -102,15 +102,13 @@ services:
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
         echo "${SITE_NAME}" > sites/currentsite.txt;
-        echo "Rebuilding assets as real files (replacing symlinks)...";
-        rm -rf sites/assets;
-        mkdir -p sites/assets;
-        for app in $$(ls apps/); do
-          if [ -d "apps/$$app/$$app/public" ]; then
-            cp -rL "apps/$$app/$$app/public" "sites/assets/$$app";
-          fi;
+        echo "Resolving asset symlinks to real files for nginx...";
+        for link in $$(find sites/assets -maxdepth 1 -type l); do
+          target=$$(readlink -f "$$link");
+          rm "$$link";
+          cp -rL "$$target" "$$link";
         done;
-        echo "Assets rebuilt.";
+        echo "Assets resolved.";
     environment:
       <<: *common-env
       SITE_NAME: ${SITE_NAME:-hrms.localhost}

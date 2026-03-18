@@ -52,13 +52,10 @@ SITE_NAME="hrms-${UUID}.${DOMAIN}"
 DEPLOY_DIR="${PREVIEW_BASE}/${UUID}"
 PROJECT_NAME="hrms-preview-${UUID}"
 
-# --- Verify shared infrastructure is running ---
-INFRA_PROJECT="hrms-${TARGET_ENV}-infra"
-if ! docker compose -p "${INFRA_PROJECT}" ps --status running 2>/dev/null | grep -q mariadb; then
-    echo "ERROR: Shared infrastructure for '${TARGET_ENV}' is not running."
-    echo "Start it with: deploy-infra.sh ${TARGET_ENV}"
-    exit 1
-fi
+# --- Ensure shared infrastructure is running ---
+echo "Ensuring shared infrastructure for '${TARGET_ENV}' is running..."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+bash "${SCRIPT_DIR}/deploy-infra.sh" "${TARGET_ENV}"
 
 # --- Get DB credentials from target environment ---
 if [ -z "${DB_ROOT_PASSWORD}" ]; then

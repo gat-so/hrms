@@ -57,15 +57,17 @@ echo "Ensuring shared infrastructure for '${TARGET_ENV}' is running..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash "${SCRIPT_DIR}/deploy-infra.sh" "${TARGET_ENV}"
 
-# --- Get DB credentials from target environment ---
-if [ -z "${DB_ROOT_PASSWORD}" ]; then
-    if [ -f "${TARGET_ENV_FILE}" ]; then
-        DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${TARGET_ENV_FILE}" | cut -d= -f2)
-    fi
+# --- Get DB credentials (check infra .env first, then target env .env) ---
+INFRA_ENV_FILE="/opt/hrms/${TARGET_ENV}-infra/.env"
+if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${INFRA_ENV_FILE}" ]; then
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2)
+fi
+if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${TARGET_ENV_FILE}" ]; then
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${TARGET_ENV_FILE}" | cut -d= -f2)
 fi
 
 if [ -z "${DB_ROOT_PASSWORD}" ]; then
-    echo "ERROR: DB_ROOT_PASSWORD not set and not found in ${TARGET_ENV_FILE}"
+    echo "ERROR: DB_ROOT_PASSWORD not found in ${INFRA_ENV_FILE} or ${TARGET_ENV_FILE}"
     exit 1
 fi
 

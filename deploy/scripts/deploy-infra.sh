@@ -18,14 +18,22 @@ INFRA_NETWORK="hrms-${ENV}-infra"
 INFRA_PROJECT="hrms-${ENV}-infra"
 ENV_FILE="/opt/hrms/${ENV}/.env"
 
-# Get DB_ROOT_PASSWORD from env or target environment's .env file
+# Get DB_ROOT_PASSWORD from (in priority order):
+# 1. Environment variable
+# 2. Existing infra .env (from a previous deploy)
+# 3. Target environment's .env
+# 4. Auto-generate one (first-time bootstrap)
+INFRA_ENV_FILE="${INFRA_DIR}/.env"
+if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${INFRA_ENV_FILE}" ]; then
+    DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${INFRA_ENV_FILE}" | cut -d= -f2)
+fi
 if [ -z "${DB_ROOT_PASSWORD}" ] && [ -f "${ENV_FILE}" ]; then
     DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${ENV_FILE}" | cut -d= -f2)
 fi
-
 if [ -z "${DB_ROOT_PASSWORD}" ]; then
-    echo "ERROR: DB_ROOT_PASSWORD not set and not found in ${ENV_FILE}"
-    exit 1
+    DB_ROOT_PASSWORD=$(openssl rand -hex 16)
+    echo "Generated new DB_ROOT_PASSWORD for '${ENV}' infrastructure."
+    echo "IMPORTANT: Save this password in ${ENV_FILE} before deploying the main environment."
 fi
 
 # Ensure directory exists

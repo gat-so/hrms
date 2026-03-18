@@ -50,11 +50,28 @@ fi
 cp deploy/docker-compose.yml "${DEPLOY_DIR}/docker-compose.yml"
 cp "deploy/.env.${ENV}.example" "${DEPLOY_DIR}/.env.example"
 
-# Require .env to exist (must be configured before first deploy)
+# Bootstrap .env from .env.example on first deploy
 if [ ! -f "${DEPLOY_DIR}/.env" ]; then
-    echo "ERROR: ${DEPLOY_DIR}/.env not found."
-    echo "Copy ${DEPLOY_DIR}/.env.example to ${DEPLOY_DIR}/.env and configure it before deploying."
-    exit 1
+    if [ ! -f "${DEPLOY_DIR}/.env.example" ]; then
+        echo "ERROR: ${DEPLOY_DIR}/.env.example not found. Cannot bootstrap .env."
+        exit 1
+    fi
+    echo "First deploy detected — bootstrapping .env from .env.example"
+    ( umask 077 && cp "${DEPLOY_DIR}/.env.example" "${DEPLOY_DIR}/.env" )
+
+    # Auto-generate passwords replacing placeholders
+    DB_PASS=$(openssl rand -hex 16)
+    ADMIN_PASS=$(openssl rand -hex 16)
+    sed -i "s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${DB_PASS}/" "${DEPLOY_DIR}/.env"
+    sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=${ADMIN_PASS}/" "${DEPLOY_DIR}/.env"
+
+    # Allow env var overrides for domain and site name
+    if [ -n "${TRAEFIK_DOMAIN}" ]; then
+        sed -i "s/^TRAEFIK_DOMAIN=.*/TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}/" "${DEPLOY_DIR}/.env"
+        sed -i "s/^SITE_NAME=.*/SITE_NAME=${TRAEFIK_DOMAIN}/" "${DEPLOY_DIR}/.env"
+    fi
+
+    echo "Generated .env with auto-generated passwords at ${DEPLOY_DIR}/.env"
 fi
 
 # Source .env to get DB_ROOT_PASSWORD for infra deployment

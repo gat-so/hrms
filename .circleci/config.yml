@@ -115,8 +115,8 @@ jobs:
           name: Deploy to dev environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
-              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\nTRAEFIK_DOMAIN=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" "${DEV_DOMAIN}" \
               > /tmp/deploy-secrets.env
             scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
             rm -f /tmp/deploy-secrets.env
@@ -131,8 +131,8 @@ jobs:
           name: Deploy to prod environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\n' \
-              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" \
+            printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\nTRAEFIK_DOMAIN=%s\n' \
+              "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" "${PROD_DOMAIN}" \
               > /tmp/deploy-secrets.env
             scp /tmp/deploy-secrets.env deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
             rm -f /tmp/deploy-secrets.env

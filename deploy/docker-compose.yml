@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-common-env: &common-env
   DB_HOST: mariadb
   DB_PORT: "3306"
@@ -209,11 +207,11 @@ services:
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule=Host(`${TRAEFIK_DOMAIN}`)"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.entrypoints=websecure"
-      - "traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver=letsencrypt"
-      - "traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port=8080"
+      traefik.enable: "true"
+      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.rule: "Host(`${TRAEFIK_DOMAIN}`)"
+      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.entrypoints: "websecure"
+      traefik.http.routers.${COMPOSE_PROJECT_NAME:-hrms}.tls.certresolver: "letsencrypt"
+      traefik.http.services.${COMPOSE_PROJECT_NAME:-hrms}.loadbalancer.server.port: "8080"
     restart: unless-stopped
     networks:
       - default

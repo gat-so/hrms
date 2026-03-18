@@ -76,6 +76,44 @@ docker compose -p ${PROJECT_NAME} \
     --env-file .env \
     up -d --remove-orphans
 
+# --- Ensure nginx is on traefik_network (fallback for race conditions) ---
+sleep 3
+NGINX_CONTAINER=$(docker compose -p ${PROJECT_NAME} --env-file .env ps nginx -q 2>/dev/null)
+if [ -n "${NGINX_CONTAINER}" ]; then
+    docker network connect traefik_network ${NGINX_CONTAINER} 2>/dev/null || true
+fi
+
+# --- Force Traefik to rediscover containers ---
+# Traefik's Docker event watching may not work due to API version mismatch.
+# Restarting Traefik forces a full container scan.
+echo "Restarting Traefik to discover new containers..."
+docker restart traefik-traefik-1 2>/dev/null \
+    || docker restart $(docker ps -q --filter name=traefik) 2>/dev/null \
+    || echo "WARNING: Could not restart Traefik"
+
+# --- Diagnostics ---
+echo ""
+echo "=== Deployment Info ==="
+echo "PROJECT_NAME=${PROJECT_NAME}"
+echo "SITE_NAME=${SITE_NAME}"
+echo "TRAEFIK_DOMAIN=${SITE_NAME}"
+if [ -n "${NGINX_CONTAINER}" ]; then
+    echo ""
+    echo "--- nginx labels ---"
+    docker inspect ${NGINX_CONTAINER} --format '{{range $k,$v := .Config.Labels}}{{$k}}={{$v}}{{"\n"}}{{end}}' 2>/dev/null | grep traefik || true
+    echo ""
+    echo "--- nginx networks ---"
+    docker inspect ${NGINX_CONTAINER} --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || true
+fi
+echo "=== End Diagnostics ==="
+
+# --- Verify site is accessible ---
+echo ""
+echo "Waiting for site to become accessible..."
+sleep 10
+HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" "https://${SITE_NAME}/" 2>/dev/null || echo "000")
+echo "Site response: HTTP ${HTTP_CODE}"
+
 # Output the preview URL (used by CI to post comment)
 echo "PREVIEW_UUID=${UUID}"
 echo "PREVIEW_URL=https://${SITE_NAME}"

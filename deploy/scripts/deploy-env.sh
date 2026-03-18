@@ -60,15 +60,21 @@ if [ ! -f "${DEPLOY_DIR}/.env" ]; then
     ( umask 077 && cp "${DEPLOY_DIR}/.env.example" "${DEPLOY_DIR}/.env" )
 
     # Auto-generate passwords replacing placeholders
-    DB_PASS=$(openssl rand -hex 16)
-    ADMIN_PASS=$(openssl rand -hex 16)
+    DB_PASS=$(openssl rand -hex 16) || { echo "ERROR: Failed to generate DB_ROOT_PASSWORD"; exit 1; }
+    ADMIN_PASS=$(openssl rand -hex 16) || { echo "ERROR: Failed to generate ADMIN_PASSWORD"; exit 1; }
+    if [ -z "${DB_PASS}" ] || [ -z "${ADMIN_PASS}" ]; then
+        echo "ERROR: openssl rand produced empty output"
+        exit 1
+    fi
     sed -i "s/^DB_ROOT_PASSWORD=.*/DB_ROOT_PASSWORD=${DB_PASS}/" "${DEPLOY_DIR}/.env"
     sed -i "s/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=${ADMIN_PASS}/" "${DEPLOY_DIR}/.env"
 
     # Allow env var overrides for domain and site name
     if [ -n "${TRAEFIK_DOMAIN}" ]; then
-        sed -i "s/^TRAEFIK_DOMAIN=.*/TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}/" "${DEPLOY_DIR}/.env"
-        sed -i "s/^SITE_NAME=.*/SITE_NAME=${TRAEFIK_DOMAIN}/" "${DEPLOY_DIR}/.env"
+        # Sanitize for sed: escape \, &, and the | delimiter
+        SAFE_DOMAIN=$(printf '%s' "${TRAEFIK_DOMAIN}" | tr -d '\n' | sed 's/[\\&|]/\\&/g')
+        sed -i "s|^TRAEFIK_DOMAIN=.*|TRAEFIK_DOMAIN=${SAFE_DOMAIN}|" "${DEPLOY_DIR}/.env"
+        sed -i "s|^SITE_NAME=.*|SITE_NAME=${SAFE_DOMAIN}|" "${DEPLOY_DIR}/.env"
     fi
 
     echo "Generated .env with auto-generated passwords at ${DEPLOY_DIR}/.env"

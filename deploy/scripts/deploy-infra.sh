@@ -32,17 +32,21 @@ fi
 sudo mkdir -p "${INFRA_DIR}"
 sudo chown "${USER}:${USER}" "${INFRA_DIR}"
 
-# Find the infra compose file from the repo
+# Find the infra compose file — check multiple locations
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DEPLOY_DIR="$(dirname "${SCRIPT_DIR}")"
-INFRA_COMPOSE="${REPO_DEPLOY_DIR}/docker-compose.infra.yml"
+INFRA_COMPOSE=""
+for path in \
+    "${REPO_DEPLOY_DIR}/docker-compose.infra.yml" \
+    "${SCRIPT_DIR}/docker-compose.infra.yml" \
+    "/opt/hrms/${ENV}/repo/deploy/docker-compose.infra.yml"; do
+    if [ -f "$path" ]; then
+        INFRA_COMPOSE="$path"
+        break
+    fi
+done
 
-# Also check if we're running from a deployed environment
-if [ ! -f "${INFRA_COMPOSE}" ]; then
-    INFRA_COMPOSE="/opt/hrms/${ENV}/repo/deploy/docker-compose.infra.yml"
-fi
-
-if [ ! -f "${INFRA_COMPOSE}" ]; then
+if [ -z "${INFRA_COMPOSE}" ]; then
     echo "ERROR: docker-compose.infra.yml not found"
     exit 1
 fi

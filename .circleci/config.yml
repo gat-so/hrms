@@ -105,8 +105,8 @@ jobs:
           name: Deploy to dev environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            scp deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh dev '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
 
   deploy-prod:
     executor: deployer
@@ -117,8 +117,8 @@ jobs:
           name: Deploy to prod environment
           command: |
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
-            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+            scp deploy/scripts/deploy-env.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-env.sh /tmp/deploy-infra.sh && /tmp/deploy-env.sh prod '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml"
 
   deploy-pr-preview:
     executor: deployer
@@ -135,8 +135,8 @@ jobs:
             fi
             IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
             GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
-            scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
-            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh")
+            scp deploy/scripts/deploy-preview.sh deploy/scripts/deploy-infra.sh deploy/docker-compose.infra.yml ${VPS_USER}@${VPS_HOST}:/tmp/
+            DEPLOY_OUTPUT=$(ssh ${VPS_USER}@${VPS_HOST} "export GITHUB_TOKEN='${GITHUB_TOKEN}' && export GHCR_TOKEN='${GHCR_TOKEN}' && echo \"\${GHCR_TOKEN}\" | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin && chmod +x /tmp/deploy-preview.sh /tmp/deploy-infra.sh && /tmp/deploy-preview.sh '${PR_NUM}' 'dev' '${GITHUB_ORG}' '${CIRCLE_PROJECT_REPONAME}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' '${IMAGE_REPO}' '${CIRCLE_SHA1:0:7}' && rm /tmp/deploy-preview.sh /tmp/deploy-infra.sh /tmp/docker-compose.infra.yml")
             echo "${DEPLOY_OUTPUT}"
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)

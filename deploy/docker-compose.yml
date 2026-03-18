@@ -53,7 +53,7 @@ services:
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
         echo "Copying assets to shared volume...";
         rm -rf /shared-assets/*;
-        cp -r /home/frappe/frappe-bench/sites/assets/* /shared-assets/;
+        cp -rL /home/frappe/frappe-bench/sites/assets/. /shared-assets/ || true;
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"

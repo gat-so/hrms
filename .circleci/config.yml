@@ -1,13 +1,5 @@
 version: 2.1
 
-orbs:
-  docker: circleci/docker@2.6.0
-
-parameters:
-  deploy-env:
-    type: string
-    default: ""
-
 executors:
   deployer:
     docker:
@@ -27,178 +19,22 @@ commands:
             mkdir -p ~/.ssh
             ssh-keyscan -H ${VPS_HOST} >> ~/.ssh/known_hosts
 
-  deploy-to-vps:
-    description: Deploy a specific environment to VPS
-    parameters:
-      environment:
-        type: string
-      domain:
-        type: string
-        default: ""
-    steps:
-      - setup-ssh
-      - run:
-          name: Deploy << parameters.environment >> to VPS
-          command: |
-            ssh ${VPS_USER}@${VPS_HOST} << 'DEPLOY_EOF'
-              set -e
-
-              ENV="<< parameters.environment >>"
-              DEPLOY_DIR="/opt/hrms/${ENV}"
-              REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
-              BRANCH="${CIRCLE_BRANCH}"
-
-              # Ensure deploy directory exists
-              sudo mkdir -p ${DEPLOY_DIR}
-              sudo chown ${USER}:${USER} ${DEPLOY_DIR}
-
-              # Clone or update repo
-              if [ -d "${DEPLOY_DIR}/repo" ]; then
-                cd ${DEPLOY_DIR}/repo
-                git fetch origin
-                git checkout ${BRANCH}
-                git reset --hard origin/${BRANCH}
-              else
-                git clone -b ${BRANCH} ${REPO_URL} ${DEPLOY_DIR}/repo
-                cd ${DEPLOY_DIR}/repo
-              fi
-
-              # Copy deployment files
-              cp deploy/docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml
-              cp deploy/.env.${ENV}.example ${DEPLOY_DIR}/.env.example
-
-              # Create .env if it doesn't exist (first deploy)
-              if [ ! -f "${DEPLOY_DIR}/.env" ]; then
-                cp ${DEPLOY_DIR}/.env.example ${DEPLOY_DIR}/.env
-                echo "WARNING: Using example .env — update with real values!"
-              fi
-
-              # Source environment variables
-              cd ${DEPLOY_DIR}
-              export $(grep -v '^#' .env | xargs)
-
-              # Build and deploy
-              docker compose -p hrms-${ENV} \
-                --env-file .env \
-                pull
-              docker compose -p hrms-${ENV} \
-                --env-file .env \
-                up -d --remove-orphans
-
-              # Run migrations
-              docker compose -p hrms-${ENV} exec -T backend \
-                bench --site ${SITE_NAME:-hrms.localhost} migrate --skip-failing || true
-
-              echo "Deployment of ${ENV} complete!"
-            DEPLOY_EOF
-
-  deploy-preview:
-    description: Deploy a PR preview environment
-    parameters:
-      pr-number:
-        type: string
-    steps:
-      - setup-ssh
-      - run:
-          name: Deploy PR preview #<< parameters.pr-number >>
-          command: |
-            ssh ${VPS_USER}@${VPS_HOST} << 'PREVIEW_EOF'
-              set -e
-
-              PR_NUM="<< parameters.pr-number >>"
-              DEPLOY_DIR="/opt/hrms/preview/pr-${PR_NUM}"
-              REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
-              BRANCH="${CIRCLE_BRANCH}"
-              DOMAIN="${PREVIEW_DOMAIN:-preview.example.com}"
-              SITE_NAME="hrms-${PR_NUM}.${DOMAIN}"
-              DB_PASSWORD=$(openssl rand -hex 16)
-
-              # Create preview directory
-              sudo mkdir -p ${DEPLOY_DIR}
-              sudo chown ${USER}:${USER} ${DEPLOY_DIR}
-
-              # Clone the PR branch
-              if [ -d "${DEPLOY_DIR}/repo" ]; then
-                cd ${DEPLOY_DIR}/repo
-                git fetch origin
-                git checkout ${BRANCH}
-                git reset --hard origin/${BRANCH}
-              else
-                git clone -b ${BRANCH} ${REPO_URL} ${DEPLOY_DIR}/repo
-                cd ${DEPLOY_DIR}/repo
-              fi
-
-              # Create preview .env
-              cat > ${DEPLOY_DIR}/.env << ENV_EOF
-              ENVIRONMENT=preview
-              COMPOSE_PROJECT_NAME=hrms-pr-${PR_NUM}
-              SITE_NAME=${SITE_NAME}
-              DB_ROOT_PASSWORD=${DB_PASSWORD}
-              ADMIN_PASSWORD=preview-admin-${PR_NUM}
-              TRAEFIK_DOMAIN=${SITE_NAME}
-              HTTP_PORT=0
-              SOCKETIO_PORT=0
-              FRAPPE_BRANCH=develop
-              ERPNEXT_BRANCH=develop
-              HRMS_REPO=https://github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git
-              HRMS_BRANCH=${BRANCH}
-            ENV_EOF
-
-              # Copy and start deployment
-              cp ${DEPLOY_DIR}/repo/deploy/docker-compose.yml ${DEPLOY_DIR}/docker-compose.yml
-
-              cd ${DEPLOY_DIR}
-              docker compose -p hrms-pr-${PR_NUM} \
-                --env-file .env \
-                up -d --remove-orphans
-
-              echo "Preview deployed at: https://${SITE_NAME}"
-            PREVIEW_EOF
-      - run:
-          name: Post preview URL to PR
-          command: |
-            PR_NUM="<< parameters.pr-number >>"
-            PREVIEW_URL="https://hrms-${PR_NUM}.${PREVIEW_DOMAIN:-preview.example.com}"
-
-            # Post comment to GitHub PR
-            curl -s -X POST \
-              -H "Authorization: token ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github.v3+json" \
-              "https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
-              -d "{\"body\":\"🚀 **Preview deployment ready!**\n\n🔗 ${PREVIEW_URL}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._\"}"
-
-  cleanup-preview:
-    description: Clean up a PR preview environment
-    parameters:
-      pr-number:
-        type: string
-    steps:
-      - setup-ssh
-      - run:
-          name: Cleanup PR preview #<< parameters.pr-number >>
-          command: |
-            ssh ${VPS_USER}@${VPS_HOST} << 'CLEANUP_EOF'
-              set -e
-
-              PR_NUM="<< parameters.pr-number >>"
-              DEPLOY_DIR="/opt/hrms/preview/pr-${PR_NUM}"
-
-              if [ -d "${DEPLOY_DIR}" ]; then
-                cd ${DEPLOY_DIR}
-
-                # Stop and remove containers, volumes
-                docker compose -p hrms-pr-${PR_NUM} down -v --remove-orphans 2>/dev/null || true
-
-                # Remove deploy directory
-                sudo rm -rf ${DEPLOY_DIR}
-
-                echo "Preview PR #${PR_NUM} cleaned up."
-              else
-                echo "No preview found for PR #${PR_NUM}."
-              fi
-            CLEANUP_EOF
-
 jobs:
+  lint-and-test:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: pip install ruff
+      - run:
+          name: Lint check
+          command: ruff check .
+      - run:
+          name: Format check
+          command: ruff format --check .
+
   build-image:
     executor: deployer
     steps:
@@ -209,13 +45,8 @@ jobs:
       - run:
           name: Build Docker image
           command: |
-            # Clone frappe_docker for the build context
             git clone --depth 1 https://github.com/frappe/frappe_docker.git /tmp/frappe_docker
-
-            # Prepare apps.json for the build
             APPS_JSON_BASE64=$(cat .github/helper/apps.json | base64 -w 0)
-
-            # Build the image
             docker build \
               --build-arg "FRAPPE_BRANCH=${FRAPPE_BRANCH:-develop}" \
               --build-arg "APPS_JSON_BASE64=${APPS_JSON_BASE64}" \
@@ -227,36 +58,58 @@ jobs:
           name: Push Docker image
           command: |
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
-
             docker push ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_SHA1:0:7}
             docker push ghcr.io/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}:${CIRCLE_BRANCH}
-
-  deploy-prod:
-    executor: deployer
-    steps:
-      - checkout
-      - deploy-to-vps:
-          environment: prod
 
   deploy-dev:
     executor: deployer
     steps:
       - checkout
-      - deploy-to-vps:
-          environment: dev
+      - setup-ssh
+      - run:
+          name: Deploy to dev environment
+          command: |
+            REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
+            scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh dev '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
+
+  deploy-prod:
+    executor: deployer
+    steps:
+      - checkout
+      - setup-ssh
+      - run:
+          name: Deploy to prod environment
+          command: |
+            REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
+            scp deploy/scripts/deploy-env.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-env.sh
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-env.sh && /tmp/deploy-env.sh prod '${REPO_URL}' '${CIRCLE_BRANCH}' && rm /tmp/deploy-env.sh"
 
   deploy-pr-preview:
     executor: deployer
     steps:
       - checkout
+      - setup-ssh
       - run:
           name: Extract PR number
           command: |
-            # Extract PR number from branch or environment
             PR_NUM=$(echo ${CIRCLE_PULL_REQUEST} | grep -oP '\d+$' || echo "0")
             echo "export PR_NUM=${PR_NUM}" >> $BASH_ENV
-      - deploy-preview:
-          pr-number: "${PR_NUM}"
+      - run:
+          name: Deploy PR preview
+          command: |
+            REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
+            scp deploy/scripts/deploy-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/deploy-preview.sh
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/deploy-preview.sh && /tmp/deploy-preview.sh '${PR_NUM}' '${REPO_URL}' '${CIRCLE_BRANCH}' '${PREVIEW_DOMAIN}' && rm /tmp/deploy-preview.sh"
+      - run:
+          name: Post preview URL to PR
+          command: |
+            PREVIEW_URL="https://hrms-${PR_NUM}.${PREVIEW_DOMAIN:-preview.example.com}"
+            curl -s -X POST \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/issues/${PR_NUM}/comments" \
+              -d "{\"body\":\"**Preview deployment ready!**\n\n${PREVIEW_URL}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._\"}"
 
   cleanup-pr-preview:
     executor: deployer
@@ -265,29 +118,15 @@ jobs:
         type: string
     steps:
       - checkout
-      - cleanup-preview:
-          pr-number: << parameters.pr-number >>
-
-  lint-and-test:
-    docker:
-      - image: cimg/python:3.12
-    steps:
-      - checkout
+      - setup-ssh
       - run:
-          name: Install dependencies
+          name: Cleanup PR preview
           command: |
-            pip install ruff
-      - run:
-          name: Lint check
-          command: |
-            ruff check .
-      - run:
-          name: Format check
-          command: |
-            ruff format --check .
+            scp deploy/scripts/cleanup-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/cleanup-preview.sh
+            ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/cleanup-preview.sh && /tmp/cleanup-preview.sh '<< parameters.pr-number >>' && rm /tmp/cleanup-preview.sh"
 
 workflows:
-  # Run on every PR
+  # Run on every PR branch
   pr-checks:
     jobs:
       - lint-and-test:
@@ -314,8 +153,6 @@ workflows:
               ignore:
                 - prod
                 - dev
-                - main
-                - develop
 
   # Deploy to dev when merged into dev branch
   deploy-dev-workflow:

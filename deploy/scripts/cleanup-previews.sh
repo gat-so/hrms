@@ -70,10 +70,15 @@ for tracker_file in ${PREVIEW_DIR}/.pr-*; do
             DB_ROOT_PASSWORD=$(grep '^DB_ROOT_PASSWORD=' "${DEPLOY_DIR}/.env" | cut -d= -f2-)
 
             if [ -n "${SITE_NAME}" ] && [ -n "${DB_ROOT_PASSWORD}" ]; then
-                docker compose -p "${PROJECT_NAME}" --env-file "${DEPLOY_DIR}/.env" \
-                    exec -T backend \
-                    bench drop-site "${SITE_NAME}" --mariadb-root-password "${DB_ROOT_PASSWORD}" --force \
-                    2>/dev/null || true
+                # Backend container may not exist if the preview never fully started;
+                # errors from missing containers are expected and intentionally suppressed.
+                BACKEND_ID=$(docker compose -p "${PROJECT_NAME}" --env-file "${DEPLOY_DIR}/.env" ps -q backend 2>/dev/null)
+                if [ -n "${BACKEND_ID}" ]; then
+                    docker compose -p "${PROJECT_NAME}" --env-file "${DEPLOY_DIR}/.env" \
+                        exec -T backend \
+                        bench drop-site "${SITE_NAME}" --mariadb-root-password "${DB_ROOT_PASSWORD}" --force \
+                        2>/dev/null || true
+                fi
             fi
         fi
 

@@ -1484,7 +1484,7 @@ def get_start_end_dates(
 
 	if payroll_frequency == "Monthly" or payroll_frequency == "Bimonthly" or payroll_frequency == "":
 		fiscal_year = get_fiscal_year(start_date, company=company)[0]
-		month = "%02d" % getdate(start_date).month
+		month = f"{getdate(start_date).month:02d}"
 		m = get_month_details(fiscal_year, month)
 		if payroll_frequency == "Bimonthly":
 			if getdate(start_date).day <= 15:
@@ -1721,7 +1721,7 @@ def get_payroll_entries_for_jv(
 			(select reference_name from `tabJournal Entry Account`
 				where reference_type="Payroll Entry")
 		order by name limit %(start)s, %(page_len)s""",
-		{"txt": "%%%s%%" % txt, "start": start, "page_len": page_len},
+		{"txt": f"%{txt}%", "start": start, "page_len": page_len},
 	)
 
 

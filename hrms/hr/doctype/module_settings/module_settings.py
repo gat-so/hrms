@@ -4,7 +4,6 @@
 import frappe
 from frappe.model.document import Document
 
-
 # Mapping of field names to workspace names
 HRMS_MODULE_MAP = {
 	"enable_people": "People",
@@ -64,7 +63,9 @@ class ModuleSettings(Document):
 
 	def validate(self):
 		if not self.enable_people:
-			frappe.throw(frappe._("The People module cannot be disabled as it is required for core HR functionality."))
+			frappe.throw(
+				frappe._("The People module cannot be disabled as it is required for core HR functionality.")
+			)
 
 	def on_update(self):
 		self.update_workspace_visibility()

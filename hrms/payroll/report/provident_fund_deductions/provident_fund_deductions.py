@@ -59,22 +59,22 @@ def get_conditions(filters):
 	conditions = [""]
 
 	if filters.get("department"):
-		conditions.append("sal.department = '%s' " % (filters["department"]))
+		conditions.append("sal.department = '{}' ".format(filters["department"]))
 
 	if filters.get("branch"):
-		conditions.append("sal.branch = '%s' " % (filters["branch"]))
+		conditions.append("sal.branch = '{}' ".format(filters["branch"]))
 
 	if filters.get("company"):
-		conditions.append("sal.company = '%s' " % (filters["company"]))
+		conditions.append("sal.company = '{}' ".format(filters["company"]))
 
 	if filters.get("month"):
-		conditions.append("month(sal.start_date) = '%s' " % (filters["month"]))
+		conditions.append("month(sal.start_date) = '{}' ".format(filters["month"]))
 
 	if filters.get("year"):
-		conditions.append("year(start_date) = '%s' " % (filters["year"]))
+		conditions.append("year(start_date) = '{}' ".format(filters["year"]))
 
 	if filters.get("mode_of_payment"):
-		conditions.append("sal.mode_of_payment = '%s' " % (filters["mode_of_payment"]))
+		conditions.append("sal.mode_of_payment = '{}' ".format(filters["mode_of_payment"]))
 
 	return " and ".join(conditions)
 
@@ -111,10 +111,9 @@ def get_data(filters):
 	conditions = get_conditions(filters)
 
 	salary_slips = frappe.db.sql(
-		""" select sal.name from `tabSalary Slip` sal
-		where docstatus = 1 %s
-		"""
-		% (conditions),
+		f""" select sal.name from `tabSalary Slip` sal
+		where docstatus = 1 {conditions}
+		""",
 		as_dict=1,
 	)
 

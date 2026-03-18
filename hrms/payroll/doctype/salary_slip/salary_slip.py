@@ -1895,7 +1895,7 @@ class SalarySlip(TransactionBase):
 		)
 
 		# Structured tax amount
-		eval_locals, default_data = self.get_data_for_eval()
+		eval_locals, _default_data = self.get_data_for_eval()
 		self.total_structured_tax_amount, __ = calculate_tax_by_tax_slab(
 			self.total_taxable_earnings_without_full_tax_addl_components,
 			self.tax_slab,

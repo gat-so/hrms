@@ -68,19 +68,19 @@ def get_conditions(filters):
 	conditions = [""]
 
 	if filters.get("department"):
-		conditions.append("department = '%s' " % (filters["department"]))
+		conditions.append("department = '{}' ".format(filters["department"]))
 
 	if filters.get("branch"):
-		conditions.append("branch = '%s' " % (filters["branch"]))
+		conditions.append("branch = '{}' ".format(filters["branch"]))
 
 	if filters.get("company"):
-		conditions.append("company = '%s' " % (filters["company"]))
+		conditions.append("company = '{}' ".format(filters["company"]))
 
 	if filters.get("month"):
-		conditions.append("month(start_date) = '%s' " % (filters["month"]))
+		conditions.append("month(start_date) = '{}' ".format(filters["month"]))
 
 	if filters.get("year"):
-		conditions.append("year(start_date) = '%s' " % (filters["year"]))
+		conditions.append("year(start_date) = '{}' ".format(filters["year"]))
 
 	return " and ".join(conditions)
 
@@ -111,10 +111,9 @@ def get_data(filters):
 	conditions = get_conditions(filters)
 
 	entry = frappe.db.sql(
-		""" select employee, employee_name, gross_pay, net_pay
+		f""" select employee, employee_name, gross_pay, net_pay
 		from `tabSalary Slip`
-		where docstatus = 1 %s """
-		% (conditions),
+		where docstatus = 1 {conditions} """,
 		as_dict=1,
 	)
 

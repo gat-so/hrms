@@ -94,6 +94,7 @@ services:
         fi;
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
+        echo "${SITE_NAME}" > sites/currentsite.txt;
     environment:
       <<: *common-env
       SITE_NAME: ${SITE_NAME:-hrms.localhost}

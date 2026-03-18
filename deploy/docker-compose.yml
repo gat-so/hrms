@@ -49,18 +49,7 @@ services:
         bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
         bench set-config -g redis_socketio "redis://$$REDIS_SOCKETIO";
         bench set-config -gp socketio_port $$SOCKETIO_PORT;
-        echo "Copying assets into sites volume...";
-        mkdir -p sites/assets;
-        for app in $$(ls apps/); do
-          if [ -d "apps/$$app/$$app/public" ]; then
-            rm -rf "sites/assets/$$app";
-            cp -rL "apps/$$app/$$app/public" "sites/assets/$$app";
-          fi;
-        done;
-        echo "Restoring assets.json from image backup...";
-        cp /home/frappe/assets.json sites/assets/assets.json 2>/dev/null || true;
-        cp /home/frappe/assets-rtl.json sites/assets/assets-rtl.json 2>/dev/null || true;
-        echo "Assets configured.";
+        echo "Configurator complete.";
     environment:
       <<: *common-env
       SOCKETIO_PORT: "9000"
@@ -105,21 +94,7 @@ services:
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
         echo "${SITE_NAME}" > sites/currentsite.txt;
-        echo "Rebuilding assets for nginx (replacing symlinks with real files)...";
-        for app in $$(ls apps/); do
-          if [ -d "apps/$$app/$$app/public" ]; then
-            rm -rf "sites/assets/$$app";
-            cp -rL "apps/$$app/$$app/public" "sites/assets/$$app";
-            echo "  Copied $$app";
-          fi;
-        done;
-        cp /home/frappe/assets.json sites/assets/assets.json 2>/dev/null || true;
-        cp /home/frappe/assets-rtl.json sites/assets/assets-rtl.json 2>/dev/null || true;
-        echo "Asset manifest:";
-        cat sites/assets/assets.json 2>/dev/null | head -c 200 || echo "  WARNING: assets.json missing!";
-        echo "";
-        ls -la sites/assets/ 2>/dev/null || true;
-        echo "Assets ready.";
+        echo "Site setup complete.";
     environment:
       <<: *common-env
       SITE_NAME: ${SITE_NAME:-hrms.localhost}
@@ -213,15 +188,19 @@ services:
       create-site:
         condition: service_completed_successfully
 
-  # --- Reverse Proxy ---
+  # --- Reverse Proxy (uses same custom image as backend, with nginx-entrypoint) ---
   nginx:
-    image: frappe/frappe-nginx:latest
+    image: ${FRAPPE_IMAGE:-frappe/bench}:${FRAPPE_IMAGE_TAG:-latest}
+    command:
+      - nginx-entrypoint.sh
     environment:
       BACKEND: backend:8000
       SOCKETIO: websocket:9000
       FRAPPE_SITE_NAME_HEADER: ${SITE_NAME:-hrms.localhost}
       UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
       UPSTREAM_REAL_IP_RECURSIVE: "off"
+      PROXY_READ_TIMEOUT: "120"
+      CLIENT_MAX_BODY_SIZE: "50m"
     volumes:
       - sites-data:/home/frappe/frappe-bench/sites
     labels:

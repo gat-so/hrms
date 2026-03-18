@@ -45,7 +45,7 @@ commands:
 
               ENV="<< parameters.environment >>"
               DEPLOY_DIR="/opt/hrms/${ENV}"
-              REPO_URL="git@github.com:${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
+              REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
               BRANCH="${CIRCLE_BRANCH}"
 
               # Ensure deploy directory exists
@@ -107,7 +107,7 @@ commands:
 
               PR_NUM="<< parameters.pr-number >>"
               DEPLOY_DIR="/opt/hrms/preview/pr-${PR_NUM}"
-              REPO_URL="https://github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
+              REPO_URL="https://${GITHUB_TOKEN}@github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}.git"
               BRANCH="${CIRCLE_BRANCH}"
               DOMAIN="${PREVIEW_DOMAIN:-preview.example.com}"
               SITE_NAME="hrms-${PR_NUM}.${DOMAIN}"

@@ -30,8 +30,7 @@ if [ -f "${TRACKER_FILE}" ]; then
     OLD_PROJECT="hrms-preview-${OLD_UUID}"
     if [ -d "${OLD_DIR}" ]; then
         echo "Tearing down previous preview ${OLD_UUID} for PR #${PR_NUM}..."
-        cd "${OLD_DIR}"
-        docker compose -p "${OLD_PROJECT}" down -v --remove-orphans 2>/dev/null || true
+        docker compose -p "${OLD_PROJECT}" -f "${OLD_DIR}/docker-compose.yml" --env-file "${OLD_DIR}/.env" down -v --remove-orphans 2>/dev/null || true
         sudo rm -rf "${OLD_DIR}"
     fi
 fi

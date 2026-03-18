@@ -170,8 +170,10 @@ jobs:
             DEPLOY_OUTPUT=$(cat /tmp/deploy-output.txt)
 
             PREVIEW_URL=$(echo "${DEPLOY_OUTPUT}" | grep "^PREVIEW_URL=" | cut -d= -f2-)
+            # Escape special characters for safe JSON embedding
+            PREVIEW_URL_ESCAPED=$(echo "${PREVIEW_URL}" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
             COMMENT_MARKER="<!-- preview-comment:preview-deployment -->"
-            COMMENT_BODY="${COMMENT_MARKER}\n**Preview deployment ready!**\n\n${PREVIEW_URL}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._"
+            COMMENT_BODY="${COMMENT_MARKER}\n**Preview deployment ready!**\n\n${PREVIEW_URL_ESCAPED}\n\n_This preview will be automatically cleaned up when the PR is closed or merged._"
 
             # Search for an existing preview comment to update
             EXISTING_COMMENT_ID=$(curl -s \
@@ -206,6 +208,11 @@ jobs:
             if [ -z "${PR_NUM}" ]; then
               echo "No PR number provided, skipping cleanup."
               exit 0
+            fi
+            # Validate PR_NUM is a positive integer
+            if ! echo "${PR_NUM}" | grep -qE '^[0-9]+$'; then
+              echo "ERROR: Invalid PR number: ${PR_NUM}"
+              exit 1
             fi
             scp deploy/scripts/cleanup-preview.sh ${VPS_USER}@${VPS_HOST}:/tmp/cleanup-preview.sh
             ssh ${VPS_USER}@${VPS_HOST} "chmod +x /tmp/cleanup-preview.sh && /tmp/cleanup-preview.sh '${PR_NUM}' && rm /tmp/cleanup-preview.sh"

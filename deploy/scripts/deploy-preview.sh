@@ -38,6 +38,7 @@ REPO_URL="https://github.com/${GITHUB_ORG}/${REPO_NAME}.git"
 
 # Set up ephemeral credential helper so the token is never written to .git/config
 GIT_ASKPASS_SCRIPT=$(mktemp)
+trap 'rm -f "${GIT_ASKPASS_SCRIPT}"' EXIT
 printf '#!/bin/sh\necho "%s"\n' "${GITHUB_TOKEN}" > "${GIT_ASKPASS_SCRIPT}"
 chmod 700 "${GIT_ASKPASS_SCRIPT}"
 export GIT_ASKPASS="${GIT_ASKPASS_SCRIPT}"

@@ -74,11 +74,11 @@ class ModuleSettings(Document):
 
 	def update_workspace_visibility(self):
 		for field, workspace_name in HRMS_MODULE_MAP.items():
-			enabled = self.get(field)
+			enabled = cint(self.get(field))
 			self.toggle_workspace(workspace_name, enabled)
 
 		for field, workspace_name in ERPNEXT_MODULE_MAP.items():
-			enabled = self.get(field)
+			enabled = cint(self.get(field))
 			self.toggle_workspace(workspace_name, enabled)
 
 	def toggle_workspace(self, workspace_name, enabled):

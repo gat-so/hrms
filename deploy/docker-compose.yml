@@ -56,7 +56,19 @@ services:
           fi;
         done;
         echo "Configuration found";
-        if [[ ! -f "sites/${SITE_NAME}/site_config.json" ]]; then
+        NEED_NEW_SITE=true;
+        if [[ -f "sites/${SITE_NAME}/site_config.json" ]]; then
+          echo "Site config found, verifying database connectivity...";
+          if bench --site ${SITE_NAME} list-apps 2>/dev/null; then
+            echo "Database accessible, running migrate...";
+            bench --site ${SITE_NAME} migrate --skip-failing;
+            NEED_NEW_SITE=false;
+          else
+            echo "Database not accessible, removing stale site config...";
+            rm -rf "sites/${SITE_NAME}";
+          fi;
+        fi;
+        if [[ "${NEED_NEW_SITE}" = true ]]; then
           echo "Creating site ${SITE_NAME}...";
           bench new-site ${SITE_NAME} \
             --mariadb-root-password ${DB_ROOT_PASSWORD} \
@@ -64,9 +76,6 @@ services:
             --no-mariadb-socket \
             --install-app erpnext \
             --install-app hrms;
-        else
-          echo "Site ${SITE_NAME} already exists, running migrate...";
-          bench --site ${SITE_NAME} migrate --skip-failing;
         fi;
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;

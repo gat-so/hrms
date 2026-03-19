@@ -62,10 +62,10 @@ services:
             echo "Migration successful.";
           else
             echo "Migration failed, cleaning up stale database...";
-            STALE_DB=$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "");
-            if [ -n "${STALE_DB}" ]; then
-              echo "Dropping database and user '${STALE_DB}'...";
-              mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS ${STALE_DB}; DROP USER IF EXISTS '${STALE_DB}'@'%'; FLUSH PRIVILEGES;" 2>/dev/null || true;
+            STALE_DB=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "");
+            if [ -n "$${STALE_DB}" ]; then
+              echo "Dropping database and user '$${STALE_DB}'...";
+              mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS $${STALE_DB}; DROP USER IF EXISTS '$${STALE_DB}'@'%'; FLUSH PRIVILEGES;" 2>/dev/null || true;
             fi;
             rm -rf "sites/${SITE_NAME}";
           fi;
@@ -80,6 +80,24 @@ services:
             --install-app erpnext \
             --install-app hrms;
         fi;
+        echo "=== DB user diagnostics ===";
+        SITE_DB=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "unknown");
+        SITE_PW=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_password',''))" 2>/dev/null || echo "");
+        echo "Site DB user: $${SITE_DB}";
+        mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT user, host, plugin, authentication_string FROM mysql.user WHERE user='$${SITE_DB}';" 2>/dev/null || echo "Could not query mysql.user";
+        mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SHOW GRANTS FOR '$${SITE_DB}'@'%';" 2>/dev/null || echo "Could not show grants";
+        if mysql -h mariadb -u "$${SITE_DB}" -p"$${SITE_PW}" -e "SELECT 1;" 2>/dev/null; then
+          echo "Site user connection: OK";
+        else
+          echo "Site user connection: FAILED — resetting password via root...";
+          mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "ALTER USER '$${SITE_DB}'@'%' IDENTIFIED BY '$${SITE_PW}'; FLUSH PRIVILEGES;" 2>/dev/null || echo "Password reset failed";
+          if mysql -h mariadb -u "$${SITE_DB}" -p"$${SITE_PW}" -e "SELECT 1;" 2>/dev/null; then
+            echo "Site user connection after reset: OK";
+          else
+            echo "Site user connection after reset: STILL FAILED";
+          fi;
+        fi;
+        echo "=== End DB diagnostics ===";
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
         echo "${SITE_NAME}" > sites/currentsite.txt;

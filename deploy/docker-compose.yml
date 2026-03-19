@@ -57,24 +57,32 @@ services:
         done;
         echo "Configuration found";
         if [[ -f "sites/${SITE_NAME}/site_config.json" ]]; then
-          echo "Site config found, verifying database connectivity...";
-          if bench --site ${SITE_NAME} list-apps 2>/dev/null; then
-            echo "Database accessible, running migrate...";
-            bench --site ${SITE_NAME} migrate --skip-failing;
+          echo "Site config found, attempting migration...";
+          if bench --site ${SITE_NAME} migrate --skip-failing; then
+            echo "Migration successful.";
           else
-            echo "Database not accessible, removing stale site config...";
+            echo "Migration failed, cleaning up stale database...";
+            STALE_DB=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "");
+            if [ -n "$${STALE_DB}" ]; then
+              echo "Dropping database and user '$${STALE_DB}'...";
+              mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS $${STALE_DB}; DROP USER IF EXISTS '$${STALE_DB}'@'%'; FLUSH PRIVILEGES;" 2>/dev/null || true;
+            fi;
             rm -rf "sites/${SITE_NAME}";
           fi;
         fi;
         if [[ ! -f "sites/${SITE_NAME}/site_config.json" ]]; then
           echo "Creating site ${SITE_NAME}...";
           bench new-site ${SITE_NAME} \
+            --force \
             --mariadb-root-password ${DB_ROOT_PASSWORD} \
             --admin-password ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required} \
             --no-mariadb-socket \
             --install-app erpnext \
             --install-app hrms;
         fi;
+        echo "=== DB user diagnostics and fix ===";
+        python3 -c "import json,MySQLdb,sys;cfg=json.load(open('sites/'+sys.argv[1]+'/site_config.json'));db,pw=cfg['db_name'],cfg['db_password'];c=MySQLdb.connect(host='mariadb',user='root',passwd=sys.argv[2]);cur=c.cursor();cur.execute('SELECT user,host,plugin FROM mysql.user WHERE user=%s',(db,));print('mysql.user:',cur.fetchall());cur.execute('ALTER USER %s@%s IDENTIFIED BY %s',(db,'%',pw));cur.execute('FLUSH PRIVILEGES');c.commit();print('Password reset done for',db);t=MySQLdb.connect(host='mariadb',user=db,passwd=pw);t.close();print('Site user connection verified OK');c.close()" "${SITE_NAME}" "${DB_ROOT_PASSWORD}" 2>&1 || echo "DB credential sync FAILED";
+        echo "=== End DB diagnostics ===";
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;
         echo "${SITE_NAME}" > sites/currentsite.txt;

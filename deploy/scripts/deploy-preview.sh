@@ -178,6 +178,12 @@ if [ -n "${NGINX_CONTAINER}" ]; then
 fi
 echo "=== End Diagnostics ==="
 
+# --- Show create-site logs for debugging ---
+echo ""
+echo "=== create-site logs ==="
+docker compose -p "${PROJECT_NAME}" --env-file .env logs create-site 2>/dev/null | tail -50
+echo "=== End create-site logs ==="
+
 # --- Verify site is accessible ---
 echo ""
 echo "Waiting for site to become accessible..."
@@ -200,6 +206,11 @@ touch "${DEPLOY_DIR}/.last_deployed"
 echo "${UUID}" > "${TRACKER_FILE}"
 
 if ! echo "${HTTP_CODE}" | grep -qE '^2'; then
+    echo ""
+    echo "=== backend logs (last 30 lines) ==="
+    docker compose -p "${PROJECT_NAME}" --env-file .env logs backend 2>/dev/null | tail -30
+    echo "=== End backend logs ==="
+    echo ""
     echo "ERROR: Site not accessible after ${MAX_RETRIES} attempts (last HTTP ${HTTP_CODE})"
     echo "PREVIEW_UUID=${UUID}"
     echo "PREVIEW_URL=https://${SITE_NAME}"

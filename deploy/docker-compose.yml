@@ -68,6 +68,7 @@ services:
         if [[ ! -f "sites/${SITE_NAME}/site_config.json" ]]; then
           echo "Creating site ${SITE_NAME}...";
           bench new-site ${SITE_NAME} \
+            --force \
             --mariadb-root-password ${DB_ROOT_PASSWORD} \
             --admin-password ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required} \
             --no-mariadb-socket \

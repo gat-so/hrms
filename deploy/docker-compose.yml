@@ -61,7 +61,12 @@ services:
           if bench --site ${SITE_NAME} migrate --skip-failing; then
             echo "Migration successful.";
           else
-            echo "Migration failed (likely stale DB credentials), recreating site...";
+            echo "Migration failed, cleaning up stale database...";
+            STALE_DB=$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "");
+            if [ -n "${STALE_DB}" ]; then
+              echo "Dropping database and user '${STALE_DB}'...";
+              mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "DROP DATABASE IF EXISTS ${STALE_DB}; DROP USER IF EXISTS '${STALE_DB}'@'%'; FLUSH PRIVILEGES;" 2>/dev/null || true;
+            fi;
             rm -rf "sites/${SITE_NAME}";
           fi;
         fi;

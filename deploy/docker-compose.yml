@@ -81,44 +81,7 @@ services:
             --install-app hrms;
         fi;
         echo "=== DB user diagnostics and fix ===";
-        python3 -c "
-        import json, sys
-        try:
-            import MySQLdb
-        except ImportError:
-            print('ERROR: MySQLdb not available'); sys.exit(1)
-        cfg = json.load(open('sites/' + sys.argv[1] + '/site_config.json'))
-        db, pw = cfg['db_name'], cfg['db_password']
-        root_pw = sys.argv[2]
-        print(f'DB name/user: {db}')
-        print(f'DB password length: {len(pw)}')
-        conn = MySQLdb.connect(host='mariadb', user='root', passwd=root_pw)
-        cur = conn.cursor()
-        cur.execute('SELECT user, host, plugin FROM mysql.user WHERE user=%s', (db,))
-        rows = cur.fetchall()
-        print(f'mysql.user entries: {rows}')
-        cur.execute('SHOW GRANTS FOR %s@%s', (db, '%'))
-        grants = cur.fetchall()
-        print(f'Grants: {grants}')
-        print('Testing site user connection...')
-        try:
-            test = MySQLdb.connect(host='mariadb', user=db, passwd=pw)
-            test.close()
-            print('Site user connection: OK')
-        except Exception as e:
-            print(f'Site user connection FAILED: {e}')
-            print('Resetting password via root...')
-            cur.execute('ALTER USER %s@%s IDENTIFIED BY %s', (db, '%', pw))
-            cur.execute('FLUSH PRIVILEGES')
-            conn.commit()
-            try:
-                test2 = MySQLdb.connect(host='mariadb', user=db, passwd=pw)
-                test2.close()
-                print('Site user connection after reset: OK')
-            except Exception as e2:
-                print(f'Site user connection after reset: STILL FAILED: {e2}')
-        conn.close()
-        " "${SITE_NAME}" "${DB_ROOT_PASSWORD}" 2>&1 || echo "DB diagnostics script failed";
+        python3 -c "import json,MySQLdb,sys;cfg=json.load(open('sites/'+sys.argv[1]+'/site_config.json'));db,pw=cfg['db_name'],cfg['db_password'];c=MySQLdb.connect(host='mariadb',user='root',passwd=sys.argv[2]);cur=c.cursor();cur.execute('SELECT user,host,plugin FROM mysql.user WHERE user=%s',(db,));print('mysql.user:',cur.fetchall());cur.execute('ALTER USER %s@%s IDENTIFIED BY %s',(db,'%',pw));cur.execute('FLUSH PRIVILEGES');c.commit();print('Password reset done for',db);t=MySQLdb.connect(host='mariadb',user=db,passwd=pw);t.close();print('Site user connection verified OK');c.close()" "${SITE_NAME}" "${DB_ROOT_PASSWORD}" 2>&1 || echo "DB credential sync FAILED";
         echo "=== End DB diagnostics ===";
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;

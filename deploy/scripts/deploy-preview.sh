@@ -181,7 +181,7 @@ echo "=== End Diagnostics ==="
 # --- Show create-site logs for debugging ---
 echo ""
 echo "=== create-site logs ==="
-docker compose -p "${PROJECT_NAME}" --env-file .env logs create-site 2>/dev/null | tail -50
+docker compose -p "${PROJECT_NAME}" --env-file .env logs create-site 2>/dev/null | tail -100
 echo "=== End create-site logs ==="
 
 # --- Verify site is accessible ---

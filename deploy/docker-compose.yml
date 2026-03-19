@@ -80,23 +80,45 @@ services:
             --install-app erpnext \
             --install-app hrms;
         fi;
-        echo "=== DB user diagnostics ===";
-        SITE_DB=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_name',''))" 2>/dev/null || echo "unknown");
-        SITE_PW=$$(python3 -c "import json;print(json.load(open('sites/${SITE_NAME}/site_config.json')).get('db_password',''))" 2>/dev/null || echo "");
-        echo "Site DB user: $${SITE_DB}";
-        mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT user, host, plugin, authentication_string FROM mysql.user WHERE user='$${SITE_DB}';" 2>/dev/null || echo "Could not query mysql.user";
-        mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SHOW GRANTS FOR '$${SITE_DB}'@'%';" 2>/dev/null || echo "Could not show grants";
-        if mysql -h mariadb -u "$${SITE_DB}" -p"$${SITE_PW}" -e "SELECT 1;" 2>/dev/null; then
-          echo "Site user connection: OK";
-        else
-          echo "Site user connection: FAILED — resetting password via root...";
-          mysql -h mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "ALTER USER '$${SITE_DB}'@'%' IDENTIFIED BY '$${SITE_PW}'; FLUSH PRIVILEGES;" 2>/dev/null || echo "Password reset failed";
-          if mysql -h mariadb -u "$${SITE_DB}" -p"$${SITE_PW}" -e "SELECT 1;" 2>/dev/null; then
-            echo "Site user connection after reset: OK";
-          else
-            echo "Site user connection after reset: STILL FAILED";
-          fi;
-        fi;
+        echo "=== DB user diagnostics and fix ===";
+        python3 -c "
+        import json, sys
+        try:
+            import MySQLdb
+        except ImportError:
+            print('ERROR: MySQLdb not available'); sys.exit(1)
+        cfg = json.load(open('sites/' + sys.argv[1] + '/site_config.json'))
+        db, pw = cfg['db_name'], cfg['db_password']
+        root_pw = sys.argv[2]
+        print(f'DB name/user: {db}')
+        print(f'DB password length: {len(pw)}')
+        conn = MySQLdb.connect(host='mariadb', user='root', passwd=root_pw)
+        cur = conn.cursor()
+        cur.execute('SELECT user, host, plugin FROM mysql.user WHERE user=%s', (db,))
+        rows = cur.fetchall()
+        print(f'mysql.user entries: {rows}')
+        cur.execute('SHOW GRANTS FOR %s@%s', (db, '%'))
+        grants = cur.fetchall()
+        print(f'Grants: {grants}')
+        print('Testing site user connection...')
+        try:
+            test = MySQLdb.connect(host='mariadb', user=db, passwd=pw)
+            test.close()
+            print('Site user connection: OK')
+        except Exception as e:
+            print(f'Site user connection FAILED: {e}')
+            print('Resetting password via root...')
+            cur.execute('ALTER USER %s@%s IDENTIFIED BY %s', (db, '%', pw))
+            cur.execute('FLUSH PRIVILEGES')
+            conn.commit()
+            try:
+                test2 = MySQLdb.connect(host='mariadb', user=db, passwd=pw)
+                test2.close()
+                print('Site user connection after reset: OK')
+            except Exception as e2:
+                print(f'Site user connection after reset: STILL FAILED: {e2}')
+        conn.close()
+        " "${SITE_NAME}" "${DB_ROOT_PASSWORD}" 2>&1 || echo "DB diagnostics script failed";
         echo "=== End DB diagnostics ===";
         bench --site ${SITE_NAME} set-config host_name "https://${TRAEFIK_DOMAIN}";
         bench --site ${SITE_NAME} enable-scheduler;

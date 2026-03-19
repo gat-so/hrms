@@ -146,13 +146,22 @@ jobs:
       - run:
           name: Deploy PR preview
           command: |
-            PR_NUM=$(echo "${CIRCLE_PULL_REQUEST}" | grep -oP '\d+$' || echo "")
+            GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
+            # CIRCLE_PULL_REQUEST is only set for forked PRs; for same-repo
+            # branches, look up the PR number via the GitHub API.
+            PR_NUM=$(echo "${CIRCLE_PULL_REQUEST}" | grep -oE '[0-9]+$' || echo "")
+            if [ -z "${PR_NUM}" ]; then
+              PR_NUM=$(curl -s \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}/pulls?head=${GITHUB_ORG}:${CIRCLE_BRANCH}&state=open" \
+                | jq -r '.[0].number // empty')
+            fi
             if [ -z "${PR_NUM}" ]; then
               echo "No PR number found, skipping preview deployment."
               exit 0
             fi
-            IMAGE_REPO="ghcr.io/$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')/${CIRCLE_PROJECT_REPONAME}"
-            GITHUB_ORG=$(echo "${CIRCLE_PROJECT_USERNAME}" | tr '[:upper:]' '[:lower:]' | sed 's/\./-/g')
+            IMAGE_REPO="ghcr.io/${GITHUB_ORG}/${CIRCLE_PROJECT_REPONAME}"
             printf 'GITHUB_TOKEN=%s\nGHCR_TOKEN=%s\nGHCR_USERNAME=%s\nDEPLOY_PR_NUM=%s\nDEPLOY_ORG=%s\nDEPLOY_REPO=%s\nDEPLOY_BRANCH=%s\nDEPLOY_DOMAIN=%s\nDEPLOY_IMAGE_REPO=%s\nDEPLOY_IMAGE_TAG=%s\n' \
               "${GITHUB_TOKEN}" "${GHCR_TOKEN}" "${GHCR_USERNAME}" "${PR_NUM}" "${GITHUB_ORG}" "${CIRCLE_PROJECT_REPONAME}" "${CIRCLE_BRANCH}" "${PREVIEW_DOMAIN}" "${IMAGE_REPO}" "${CIRCLE_SHA1:0:7}" \
               > /tmp/deploy-secrets.env

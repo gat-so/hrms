@@ -57,12 +57,11 @@ services:
         done;
         echo "Configuration found";
         if [[ -f "sites/${SITE_NAME}/site_config.json" ]]; then
-          echo "Site config found, verifying database connectivity...";
-          if bench --site ${SITE_NAME} execute frappe.db.sql --args '["SELECT 1"]' 2>/dev/null; then
-            echo "Database accessible, running migrate...";
-            bench --site ${SITE_NAME} migrate --skip-failing;
+          echo "Site config found, attempting migration...";
+          if bench --site ${SITE_NAME} migrate --skip-failing; then
+            echo "Migration successful.";
           else
-            echo "Database not accessible, removing stale site config...";
+            echo "Migration failed (likely stale DB credentials), recreating site...";
             rm -rf "sites/${SITE_NAME}";
           fi;
         fi;
